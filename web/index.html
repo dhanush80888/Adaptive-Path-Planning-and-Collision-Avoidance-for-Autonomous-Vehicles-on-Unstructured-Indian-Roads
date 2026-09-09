@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Adaptive Collision Avoidance (AVOC) - Autonomous Vehicles</title>
+  <link rel="stylesheet" href="styles.css?v=2.2" />
+  <!-- Tailwind via CDN for clean layout -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: '#0ea5e9',
+            riskNominal: '#10b981',
+            riskAware: '#f59e0b',
+            riskElevated: '#f97316',
+            riskCritical: '#ef4444',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden select-none font-sans antialiased">
+
+  <!-- TOP APP BAR -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-5 flex items-center justify-between z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-wide uppercase flex items-center gap-2">
+          <span>Adaptive Collision Avoidance</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800 font-mono">AVOC v2.0 • Python Core</span>
+        </h1>
+        <p class="text-[11px] text-slate-400 font-medium">Autonomous Driving Safety Layer for Unstructured Mixed Traffic (Left-Hand Traffic)</p>
+      </div>
+    </div>
+
+    <!-- Live Telemetry Quick Pills -->
+    <div class="flex items-center gap-4 text-xs font-mono">
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-slate-400">LHT:</span>
+        <span class="text-emerald-400 font-semibold">LHT DRIVE (LEFT LANE)</span>
+      </div>
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700">
+        <span class="text-slate-400">ENGINE:</span>
+        <span class="text-sky-400 font-semibold" id="topEngineStatus">60 FPS REALTIME</span>
+      </div>
+      <button id="muteBtn" class="flex items-center gap-1.5 px-3 py-1 rounded bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 transition-colors">
+        <span id="muteIcon">🔊</span>
+        <span id="muteLabel">Voice: ON</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN VIEWPORT: 75% ROAD SIMULATION + 25% SAFETY BRAIN HUD -->
+  <main class="flex-1 flex overflow-hidden relative">
+
+    <!-- 75% SCREEN WIDTH ROAD VIEWPORT -->
+    <section class="flex-1 relative flex flex-col bg-slate-950 border-r border-slate-800 overflow-hidden">
+      <!-- Canvas Container -->
+      <div class="flex-1 relative w-full h-full">
+        <canvas id="simCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+
+        <!-- Floating Road Info Overlay -->
+        <div class="absolute top-4 left-4 bg-slate-900/85 backdrop-blur border border-slate-800 p-3 rounded-lg text-xs max-w-sm pointer-events-none shadow-xl">
+          <div class="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-800 font-semibold text-sky-400">
+            <span id="scenarioTitle">Scenario 1: Motorcycle Cut-In</span>
+            <span id="scenarioTime" class="font-mono text-slate-400">0.0s / 14.0s</span>
+          </div>
+          <p id="scenarioDesc" class="text-slate-300 text-[11px] leading-relaxed">
+            Motorcycle overtakes from behind and abruptly swerves into our safe braking corridor.
+          </p>
+        </div>
+
+        <!-- Sensor & Visual Layers Toggles -->
+        <div class="absolute top-4 right-4 flex flex-col gap-1.5 bg-slate-900/80 backdrop-blur border border-slate-800 p-2 rounded-lg text-[11px]">
+          <label class="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+            <input type="checkbox" id="toggleLidar" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" />
+            <span>LiDAR Sweep Pulse</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+            <input type="checkbox" id="toggleTrajectory" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" />
+            <span>Predictive Trajectory Arcs</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+            <input type="checkbox" id="toggleBlindspot" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" />
+            <span>Blindspot Gap Envelope</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-indigo-300 hover:text-indigo-100">
+            <input type="checkbox" id="toggleMemory" checked class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0" />
+            <span>🧠 Road Spatial Memory</span>
+          </label>
+        </div>
+
+        <!-- Bottom Playback & Timeline Controls -->
+        <div class="absolute bottom-4 left-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-800 p-3 rounded-xl shadow-2xl flex flex-col gap-2 z-10">
+          <!-- Auto Dynamic Mode Quick Hazard Injection Bar -->
+          <div id="autoInjectBar" class="flex items-center gap-1.5 overflow-x-auto py-1 px-1 border-b border-slate-800/80 text-[11px]">
+            <span class="text-amber-400 font-bold whitespace-nowrap flex items-center gap-1 text-[10px] mr-1">
+              <span>⚡ INJECT HAZARD:</span>
+            </span>
+            <button data-hazard="cut_in" class="inject-btn px-2 py-0.5 rounded bg-amber-950/60 hover:bg-amber-900 border border-amber-800/80 text-amber-300 transition-colors whitespace-nowrap">
+              + Bike Cut-In
+            </button>
+            <button data-hazard="pedestrian" class="inject-btn px-2 py-0.5 rounded bg-purple-950/60 hover:bg-purple-900 border border-purple-800/80 text-purple-300 transition-colors whitespace-nowrap">
+              + Roadside Pedestrian
+            </button>
+            <button data-hazard="wrong_way" class="inject-btn px-2 py-0.5 rounded bg-red-950/60 hover:bg-red-900 border border-red-800/80 text-red-300 transition-colors whitespace-nowrap">
+              + Wrong-Way Vehicle
+            </button>
+            <button data-hazard="obstacle" class="inject-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 transition-colors whitespace-nowrap">
+              + Pothole & Blindspot
+            </button>
+            <button data-hazard="police" class="inject-btn px-2 py-0.5 rounded bg-yellow-950/60 hover:bg-yellow-900 border border-yellow-800/80 text-yellow-300 transition-colors whitespace-nowrap">
+              + Police Hand Stop
+            </button>
+            <button data-hazard="junction" class="inject-btn px-2 py-0.5 rounded bg-sky-950/60 hover:bg-sky-900 border border-sky-800/80 text-sky-300 transition-colors whitespace-nowrap">
+              + Mixed Junction
+            </button>
+            <button data-hazard="random" class="inject-btn px-2 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800/80 text-emerald-300 font-bold transition-colors whitespace-nowrap">
+              🎲 Random Multi-Hazard
+            </button>
+          </div>
+
+          <!-- Timeline Progress Scrubber -->
+          <div class="flex items-center gap-3 text-xs font-mono">
+            <span class="text-slate-400 w-12 text-right" id="elapsedLabel">0.0s</span>
+            <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden relative cursor-pointer" id="timelineBar">
+              <div id="timelineFill" class="h-full bg-gradient-to-r from-sky-500 to-emerald-400 w-0"></div>
+            </div>
+            <span class="text-slate-400 w-12" id="durationLabel">14.0s</span>
+          </div>
+
+          <!-- Scenario Tabs & Buttons -->
+          <div class="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-800/80">
+            <!-- Scenarios Switcher (Tab 0 Auto + Tabs 1 to 6) -->
+            <div class="flex items-center gap-1" id="scenarioTabs">
+              <!-- Rendered via JS -->
+            </div>
+
+            <!-- Controls (Play, Reset, Speed) -->
+            <div class="flex items-center gap-2">
+              <button id="btnPlayPause" class="px-3 py-1 rounded bg-sky-600 hover:bg-sky-500 font-semibold text-xs transition-colors flex items-center gap-1">
+                <span id="playIcon">⏸</span>
+                <span id="playText">Pause</span>
+              </button>
+              <button id="btnReset" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition-colors">
+                ↺ Replay
+              </button>
+              <div class="flex rounded border border-slate-700 overflow-hidden text-xs">
+                <button data-speed="0.5" class="speed-btn px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">0.5x</button>
+                <button data-speed="1.0" class="speed-btn px-2 py-1 bg-sky-600 text-white font-bold">1x</button>
+                <button data-speed="2.0" class="speed-btn px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300">2x</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 25% SCREEN WIDTH: SAFETY BRAIN HUD & LIVE DIAGNOSTICS -->
+    <aside class="w-80 lg:w-96 bg-slate-900 flex flex-col overflow-y-auto text-xs font-mono p-4 gap-4 border-l border-slate-800">
+      
+      <!-- HUD Title -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <span class="font-bold text-slate-200 text-sm tracking-wide">SAFETY BRAIN HUD</span>
+        <span id="egoStateBadge" class="px-2 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">CRUISING</span>
+      </div>
+
+      <!-- AUTO MODE METRICS CARD (Appears during Auto Real-World Mode) -->
+      <div id="autoMetricsCard" class="p-3 rounded-xl border bg-gradient-to-br from-slate-950 to-sky-950/40 border-sky-500/40 flex flex-col gap-2">
+        <div class="flex items-center justify-between text-[10px] uppercase font-bold tracking-wider text-sky-400">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            <span>AUTO REAL-WORLD DYNAMICS</span>
+          </span>
+          <span id="autoLoopBadge" class="px-1.5 py-0.5 rounded bg-sky-900/60 text-sky-200 border border-sky-700 font-mono">SEQ 1/6</span>
+        </div>
+        <div class="text-[12px] font-bold text-slate-100 truncate" id="autoSeqTitle">
+          1. Motorcycle Rapid Cut-In
+        </div>
+        <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800/80 text-center">
+          <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+            <span class="text-[9px] text-slate-400 block">DISTANCE</span>
+            <span id="autoDistance" class="text-xs font-bold text-sky-400">0.0 m</span>
+          </div>
+          <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+            <span class="text-[9px] text-slate-400 block">AVOIDED</span>
+            <span id="autoAvoided" class="text-xs font-bold text-emerald-400">0 Safe</span>
+          </div>
+          <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+            <span class="text-[9px] text-slate-400 block">COLLISIONS</span>
+            <span id="autoCollisions" class="text-xs font-bold text-emerald-400">0 (Safe)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RISK LEVEL CARD -->
+      <div id="riskCard" class="p-3.5 rounded-xl border bg-slate-950 border-emerald-500/30 transition-colors duration-150">
+        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1 flex items-center justify-between">
+          <span>COLLISION RISK LEVEL</span>
+          <span id="riskTTC" class="text-xs font-bold text-slate-300">TTC: --</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="riskLevelText" class="text-2xl font-black tracking-tight text-emerald-400">NOMINAL</span>
+          <span id="riskSubText" class="text-[11px] text-slate-400">Path clear</span>
+        </div>
+      </div>
+
+      <!-- DETECTED ENTITY CONTEXT -->
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-2">
+        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider flex items-center justify-between">
+          <span>DETECTED ENTITY CONTEXT</span>
+          <span id="entityBadge" class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">SCANNING</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-800/80">
+          <div>
+            <span class="text-slate-500 block text-[10px]">PRIMARY TARGET</span>
+            <span id="targetName" class="font-semibold text-slate-200 truncate block">None in threat zone</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">BEHAVIOR PATTERN</span>
+            <span id="targetBehavior" class="font-semibold text-slate-300 truncate block">Normal flow</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">LATERAL VOLATILITY</span>
+            <span id="targetDrift" class="text-slate-300 font-mono">0.0 m/s</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">CLOSING DISTANCE</span>
+            <span id="targetDistance" class="text-slate-300 font-mono">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DECISION & CONTROL ACTUATION -->
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-2.5">
+        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider flex items-center justify-between">
+          <span>ADAPTIVE DECISION & ACTION</span>
+          <span id="gapBadge" class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 text-[10px] border border-emerald-800/60">GAP: CLEAR</span>
+        </div>
+
+        <div class="p-2.5 rounded bg-slate-900 border border-slate-800">
+          <span class="text-[10px] text-slate-400 block font-sans">RECOMMENDED ACTION</span>
+          <span id="decisionText" class="font-bold text-sky-400 text-xs block truncate">MAINTAIN_CRUISE</span>
+        </div>
+
+        <!-- Actuator Gauges -->
+        <div class="space-y-2 pt-1 font-sans">
+          <!-- Speed Gauge -->
+          <div>
+            <div class="flex justify-between text-[11px] mb-1 font-mono">
+              <span class="text-slate-400">SPEED (TARGET: <span id="targetSpeedKmh">40.0</span>)</span>
+              <span id="currentSpeedKmh" class="font-bold text-slate-100">40.0 km/h</span>
+            </div>
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="speedBar" class="h-full bg-sky-500 w-[66%] transition-all duration-75"></div>
+            </div>
+          </div>
+
+          <!-- Brake Gauge -->
+          <div>
+            <div class="flex justify-between text-[11px] mb-1 font-mono">
+              <span class="text-slate-400">BRAKE PRESSURE</span>
+              <span id="brakeValue" class="font-bold text-slate-300">0%</span>
+            </div>
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="brakeBar" class="h-full bg-red-500 w-0 transition-all duration-75"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLINDSPOT & SWERVE VALIDATOR ("NEVER BLINDLY SWERVE") -->
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-1.5">
+        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider flex items-center justify-between">
+          <span>BLINDSPOT SWERVE VALIDATOR</span>
+          <span class="text-[10px] text-slate-500">RULE: NEVER BLINDLY SWERVE</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px] pt-1">
+          <span class="text-slate-400">Right Adjacent Lane:</span>
+          <span id="blindspotRight" class="font-semibold text-emerald-400">CLEAR (>15m)</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="text-slate-400">Left Shoulder Clearance:</span>
+          <span id="blindspotLeft" class="font-semibold text-emerald-400">CLEAR</span>
+        </div>
+      </div>
+
+      <!-- HISTORICAL ROAD MEMORY & SPATIAL PRIORS -->
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-indigo-900/40 flex flex-col gap-1.5 shadow-inner">
+        <div class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wider flex items-center justify-between">
+          <span>🧠 ROAD MEMORY PRIOR LAYER</span>
+          <span id="memoryStatusBadge" class="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 text-[10px] border border-indigo-800">FLEET PRIOR</span>
+        </div>
+        <div class="text-[11px] pt-1 border-t border-slate-800/80 space-y-1">
+          <div>
+            <span class="text-slate-500 text-[10px] block">KNOWN SPATIAL HOTSPOT</span>
+            <span id="memoryHotspotTitle" class="font-semibold text-indigo-200 block truncate">Scanning road map...</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Prior Confidence:</span>
+            <span id="memoryConfidence" class="font-bold text-indigo-300">96.0%</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Pre-Emptive Safety Action:</span>
+            <span id="memoryPreAction" class="font-semibold text-amber-400">BRAKE PRE-FILL</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SYNCHRONIZED AUDIO & VOICE EVENT LOG -->
+      <div class="flex-1 min-h-[140px] p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col overflow-hidden">
+        <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pb-1.5 mb-1 border-b border-slate-800 flex items-center justify-between">
+          <span>VOICE DISPATCH QUEUE</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
+        </div>
+        <div id="voiceLog" class="flex-1 overflow-y-auto space-y-1.5 text-[11px] font-sans pr-1">
+          <div class="text-slate-500 italic">No audio dispatched yet</div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- App script -->
+  <script src="app.js?v=2.2"></script>
+</body>
+</html>
