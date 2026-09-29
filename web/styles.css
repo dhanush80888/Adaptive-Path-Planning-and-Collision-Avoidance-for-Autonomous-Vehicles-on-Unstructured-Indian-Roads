@@ -1,43 +1,668 @@
-/* Custom styles for AVOC Simulation Dashboard */
+/* ==========================================================================
+   NEUROPATH-AV: Real-Time Risk-Aware Navigation Dashboard
+   Professional Dark Theme: Deep Charcoal, Medium Gray Road, Dark Navy Panels,
+   Purple/Violet Primary, Teal Accents, Amber Warnings, Red Critical, Green Safe.
+   ========================================================================== */
 
-/* Custom scrollbars */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Core Color Palette */
+  --bg-primary: #121316;          /* Deep Charcoal background */
+  --bg-card: #0C1426;             /* Dark Navy secondary panels */
+  --bg-card-hover: #121E38;       /* Dark Navy hover */
+  --bg-surface: #090F1D;          /* Deep Navy surface */
+
+  /* Road Surface */
+  --road-surface: #3A3F4B;        /* Medium Gray road */
+  --road-curb: #333742;           /* Dark curb stone */
+
+  /* Primary UI Elements: Purple / Violet */
+  --accent-primary: #8B5CF6;
+  --accent-primary-dark: #7C3AED;
+  --accent-primary-deep: #6D28D9;
+  --accent-primary-glow: rgba(139, 92, 246, 0.35);
+
+  /* Secondary Accents: Teal */
+  --accent-teal: #14B8A6;
+  --accent-teal-light: #2DD4BF;
+  --accent-teal-glow: rgba(20, 184, 166, 0.3);
+
+  /* Typography */
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  /* Dividers & Borders (Dark Navy Slate) */
+  --border-slate: #1E2D4A;
+  --border-slate-light: #283B60;
+
+  /* Safety & Risk Invariant Colors */
+  --risk-safe: #10B981;
+  --risk-safe-bg: rgba(16, 185, 129, 0.12);
+  --risk-safe-border: rgba(16, 185, 129, 0.45);
+
+  --risk-warning: #F59E0B;
+  --risk-warning-bg: rgba(245, 158, 11, 0.12);
+  --risk-warning-border: rgba(245, 158, 11, 0.45);
+
+  --risk-danger: #EF4444;
+  --risk-danger-bg: rgba(239, 68, 68, 0.15);
+  --risk-danger-border: rgba(239, 68, 68, 0.5);
+
+  --risk-replan: #14B8A6;
+  --risk-replan-bg: rgba(20, 184, 166, 0.12);
+  --risk-replan-border: rgba(20, 184, 166, 0.45);
+
+  /* Radius standards */
+  --radius-card: 12px;
+  --radius-badge: 6px;
+  --radius-button: 8px;
+}
+
+/* Base Body Styles */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Monospace font standard for telemetry */
+.font-mono, [data-mono] {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--bg-primary);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--border-slate);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(71, 85, 105, 1);
+  background: var(--border-slate-light);
 }
 
-/* Glassmorphism helpers */
-.backdrop-blur-md {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+/* Professional Dashboard Card Base */
+.neu-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-slate);
+  border-radius: var(--radius-card);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-/* Pulse animation for radar blip */
-@keyframes radar-pulse {
+.neu-card:hover {
+  border-color: var(--border-slate-light);
+}
+
+/* Header Telemetry Badge */
+.telemetry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background-color: rgba(12, 20, 38, 0.9);
+  border: 1px solid var(--border-slate);
+  border-radius: var(--radius-button);
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Sensor Status Indicator Pill */
+.sensor-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background-color: rgba(12, 20, 38, 0.9);
+  border: 1px solid var(--border-slate);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+}
+
+.sensor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-teal);
+  box-shadow: 0 0 6px var(--accent-teal-glow);
+}
+
+.sensor-dot.active-emerald {
+  background-color: var(--risk-safe);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+/* Pulsing Status Animation */
+@keyframes pulse-dot {
   0% {
-    transform: scale(0.95);
+    transform: scale(0.9);
     opacity: 0.8;
   }
   50% {
-    transform: scale(1.05);
-    opacity: 0.4;
+    transform: scale(1.15);
+    opacity: 1;
   }
   100% {
-    transform: scale(0.95);
+    transform: scale(0.9);
     opacity: 0.8;
   }
 }
 
-.animate-radar {
-  animation: radar-pulse 2s infinite ease-in-out;
+.pulse-active {
+  animation: pulse-dot 1.8s infinite ease-in-out;
 }
+
+/* Subtle Active Accent Glow */
+.glow-purple {
+  box-shadow: 0 0 14px var(--accent-primary-glow);
+}
+
+.glow-teal {
+  box-shadow: 0 0 14px var(--accent-teal-glow);
+}
+
+/* Risk Matrix Indicators */
+.risk-indicator-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 8px;
+  background-color: rgba(12, 20, 38, 0.7);
+  border: 1px solid var(--border-slate);
+  transition: all 0.2s ease;
+  opacity: 0.45;
+}
+
+.risk-indicator-item.active-safe {
+  opacity: 1;
+  background-color: var(--risk-safe-bg);
+  border-color: var(--risk-safe);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+}
+
+.risk-indicator-item.active-warning {
+  opacity: 1;
+  background-color: var(--risk-warning-bg);
+  border-color: var(--risk-warning);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+
+.risk-indicator-item.active-danger {
+  opacity: 1;
+  background-color: var(--risk-danger-bg);
+  border-color: var(--risk-danger);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+  animation: pulse-danger 1.2s infinite ease-in-out;
+}
+
+.risk-indicator-item.active-replan {
+  opacity: 1;
+  background-color: var(--risk-replan-bg);
+  border-color: var(--risk-replan);
+  box-shadow: 0 0 12px rgba(20, 184, 166, 0.3);
+}
+
+@keyframes pulse-danger {
+  0% { border-color: rgba(239, 68, 68, 0.5); }
+  50% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 16px rgba(239, 68, 68, 0.5); }
+  100% { border-color: rgba(239, 68, 68, 0.5); }
+}
+
+/* No Scrollbar Utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==========================================================================
+   AUTONOMOUS VEHICLE SIMULATOR BUTTONS & INTERACTIVE CONTROLS
+   Precision Rounded Rectangular Geometry (8px radius)
+   Tactile Cockpit Bevels, Clear Hover, Active, and Disabled States
+   ========================================================================== */
+
+/* Universal Disabled State for All Buttons & Interactive Controls */
+button:disabled,
+button[disabled],
+.btn-disabled {
+  opacity: 0.38 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  filter: grayscale(0.6) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Primary Action Buttons (Purple / Violet) */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #8B5CF6 0%, #6D28D9 100%);
+  border: 1px solid #A855F7;
+  color: #FFFFFF;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, #9333EA 0%, #7C3AED 100%);
+  border-color: #2DD4BF;
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.6), 0 3px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  background: linear-gradient(180deg, #5B21B6 0%, #6D28D9 100%);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+  transform: translateY(0.5px);
+}
+
+/* Compact Primary Action Button (Purple / Violet - Play/Pause) */
+.btn-primary-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #8B5CF6 0%, #6D28D9 100%);
+  border: 1px solid #A855F7;
+  color: #FFFFFF;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.btn-primary-compact:hover {
+  background: linear-gradient(180deg, #9333EA 0%, #7C3AED 100%);
+  border-color: #2DD4BF;
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-primary-compact:active {
+  background: linear-gradient(180deg, #5B21B6 0%, #6D28D9 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform: translateY(0.5px);
+}
+
+/* Secondary Action Buttons (Dark Cockpit Slate) */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #152238 0%, #0B1324 100%);
+  border: 1px solid #233554;
+  color: #CBD5E1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(180deg, #1E3152 0%, #121E36 100%);
+  border-color: #2DD4BF;
+  color: #FFFFFF;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  background: #09101E;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform: translateY(0.5px);
+}
+
+/* Compact Secondary Action Button (Dark Cockpit Slate - Replay / Mute) */
+.btn-secondary-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #142038 0%, #0A1224 100%);
+  border: 1px solid #20314E;
+  color: #CBD5E1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.btn-secondary-compact:hover {
+  background: linear-gradient(180deg, #1A2A48 0%, #101B32 100%);
+  border-color: #2DD4BF;
+  color: #FFFFFF;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.3), 0 2px 5px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-secondary-compact:active {
+  background: #080F1E;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform: translateY(0.5px);
+}
+
+/* Scenario Tabs (Autonomous Mission Selectors) */
+.scen-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #131E33 0%, #0A1222 100%);
+  border: 1px solid #1F304E;
+  color: #94A3B8;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.scen-tab-btn:hover {
+  background: linear-gradient(180deg, #1A2A48 0%, #101B32 100%);
+  color: #F8FAFC;
+  border-color: #8B5CF6;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.scen-tab-btn.active {
+  background: linear-gradient(180deg, #7C3AED 0%, #5B21B6 100%) !important;
+  border: 1px solid #A855F7 !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+  transform: translateY(-0.5px);
+}
+
+.scen-tab-btn:active {
+  transform: translateY(0.5px);
+}
+
+/* Hazard Inject Buttons (Cockpit Trigger Switches) */
+.hazard-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #121C30 0%, #0A1120 100%);
+  border: 1px solid #1E2D4A;
+  color: #CBD5E1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.hazard-pill-btn:hover {
+  background: linear-gradient(180deg, #1A2846 0%, #0E172A 100%);
+  border-color: #F59E0B;
+  color: #FEF08A;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
+  transform: translateY(-1px);
+}
+
+.hazard-pill-btn:active {
+  background: #080D1A;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform: translateY(0.5px);
+}
+
+/* Speed Selector Deck Buttons */
+.speed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background-color: #0A1222;
+  border: 1px solid #1E2D4A;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.speed-btn:hover {
+  background-color: #142038;
+  color: #F8FAFC;
+  border-color: #8B5CF6;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  transform: translateY(-1px);
+}
+
+.speed-btn.active,
+.speed-btn[class*="7C3AED"] {
+  background: linear-gradient(180deg, #8B5CF6 0%, #6D28D9 100%) !important;
+  border: 1px solid #A855F7 !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+.speed-btn:active {
+  transform: translateY(0.5px);
+}
+
+/* Random Hazard Trigger Special Accent */
+.hazard-pill-btn.hazard-random,
+button[data-hazard="random"] {
+  border-color: rgba(20, 184, 166, 0.6);
+  color: #2DD4BF;
+}
+
+.hazard-pill-btn.hazard-random:hover,
+button[data-hazard="random"]:hover {
+  background: linear-gradient(180deg, #142838 0%, #0D1A26 100%);
+  border-color: #2DD4BF;
+  color: #5EEAD4;
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.4);
+}
+
+/* Custom Gauges */
+.gauge-track {
+  height: 6px;
+  background-color: rgba(18, 19, 22, 0.9);
+  border: 1px solid var(--border-slate);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.gauge-fill-speed {
+  height: 100%;
+  background: linear-gradient(90deg, #6D28D9 0%, #8B5CF6 55%, #2DD4BF 100%);
+  border-radius: 9999px;
+  transition: width 0.1s linear;
+}
+
+.gauge-fill-brake {
+  height: 100%;
+  background: linear-gradient(90deg, #F87171 0%, #EF4444 100%);
+  border-radius: 9999px;
+  transition: width 0.1s linear;
+}
+
+/* Reticle / Radar Sweep Overlay Effect */
+.reticle-corner {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--accent-teal);
+  pointer-events: none;
+}
+
+/* AV Control Center Card Base */
+.control-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-slate);
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.control-card:hover {
+  border-color: var(--border-slate-light);
+}
+
+/* Section Header Typography */
+.section-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-teal-light);
+  text-transform: uppercase;
+  padding: 2px 4px;
+}
+
+/* HUD Inner Capsule */
+.hud-capsule {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-slate);
+  border-radius: 10px;
+}
+
+/* Sensor Toggle Switch (Cockpit Sensor Selector Card) */
+.sensor-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #131E33 0%, #0A1222 100%);
+  border: 1px solid #1E2D4A;
+  font-size: 10.5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #CBD5E1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sensor-toggle-pill:hover {
+  background: linear-gradient(180deg, #1C2D4E 0%, #101B33 100%);
+  color: #FFFFFF;
+  border-color: #2DD4BF;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.3);
+  transform: translateY(-1px);
+}
+
+.sensor-toggle-pill:active {
+  transform: translateY(0.5px);
+}
+
+.sensor-toggle-pill input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #14B8A6;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+}
+
+.sensor-toggle-pill:has(input[type="checkbox"]:checked) {
+  background: linear-gradient(180deg, #162B44 0%, #0E1D33 100%);
+  border-color: #14B8A6;
+  color: #FFFFFF;
+  box-shadow: 0 0 10px rgba(20, 184, 166, 0.28);
+}
+
+/* Weather / Environment Mode Buttons */
+.weather-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94A3B8;
+  background-color: transparent;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.weather-btn:hover {
+  color: #F8FAFC;
+  background-color: rgba(30, 45, 74, 0.6);
+  border-color: #1E2D4A;
+}
+
+.weather-btn.active {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  border-color: #A855F7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+  font-weight: 700;
+}
+

@@ -65,6 +65,8 @@ class Scenario0_AutoRealWorld(BaseScenario):
             "4. Road Pothole (Blindspot Hold)",
             "5. Traffic Police Hand Override",
             "6. Unregulated Mixed Junction",
+            "7. Emergency Responder Corridor Yield",
+            "8. Stray Cattle Lane Incursion",
         ]
         self.show_zebra = False
         self.show_junction = False
@@ -127,6 +129,8 @@ class Scenario0_AutoRealWorld(BaseScenario):
             "SCENARIO_5_OBSTACLE_SWERVE",
             "SCENARIO_4_TRAFFIC_POLICE",
             "SCENARIO_6_BUSY_JUNCTION",
+            "SCENARIO_7_EMERGENCY_VEHICLE",
+            "SCENARIO_2_PEDESTRIAN",
         ]
         return RoadMemoryDatabase.get_memory_for_scenario(scenario_ids[cur_id])
 
@@ -164,6 +168,10 @@ class Scenario0_AutoRealWorld(BaseScenario):
             target_seq = 4
         elif "junc" in inj:
             target_seq = 5
+        elif "emerg" in inj or "amb" in inj:
+            target_seq = 6
+        elif "cattle" in inj or "anim" in inj or "cow" in inj:
+            target_seq = 7
         elif "random" in inj:
             # Pick a hazard different from current if possible
             cur_seq = self.seq_index % len(self.sequence_names)
@@ -396,6 +404,49 @@ class Scenario0_AutoRealWorld(BaseScenario):
             turning_moto.base_heading = math.pi * 0.75
             entities.extend([cross_auto, turning_moto])
 
+        elif seq_id == 6:
+            # 7. Emergency Responder Corridor Yield
+            self.show_zebra = False
+            self.show_junction = False
+            self.active_hazard_title = "Emergency Ambulance Fast Approach (108)"
+            ambulance = Vehicle(
+                id="auto_ambulance_6",
+                type=EntityType.AMBULANCE,
+                name="Emergency Ambulance (108)",
+                x=ego_lane_x,
+                y=ego.y + (22.0 * PIXELS_PER_METER),
+                speed=18.0,
+                target_speed=18.0,
+                max_speed=20.0,
+                width_m=2.2,
+                length_m=5.2,
+                color="#FFFFFF",
+            )
+            ambulance.target_x = ego_lane_x
+            entities.append(ambulance)
+
+        elif seq_id == 7:
+            # 8. Stray Cattle Lane Incursion
+            self.show_zebra = False
+            self.show_junction = False
+            self.active_hazard_title = "Stray Cattle Wandering Across Corridor"
+            cattle = Vehicle(
+                id="auto_cattle_7",
+                type=EntityType.STRAY_ANIMAL,
+                name="Stray Cattle (Indian Zebu)",
+                x=self.road_layout["road_right_edge"] - 20.0,
+                y=ego.y - (16.0 * PIXELS_PER_METER),
+                speed=1.1,
+                target_speed=1.1,
+                max_speed=1.5,
+                heading=-math.pi / 2,
+                width_m=1.2,
+                length_m=2.4,
+                color="#D4A373",
+            )
+            cattle.target_x = self.road_layout["road_left_edge"] - 40.0
+            entities.append(cattle)
+
     def _update_sequence(self, seq_id: int, dt: float, ego: Vehicle, entities: List[Vehicle]):
         if seq_id == 0:
             # Motorcycle Cut-In
@@ -516,6 +567,36 @@ class Scenario0_AutoRealWorld(BaseScenario):
                 turning_moto.y += math.cos(turning_moto.heading) * turning_moto.speed * PIXELS_PER_METER * dt
 
             if (self.phase_elapsed >= 7.5 and ego.speed > 7.0) or self.phase_elapsed >= 9.5:
+                self._finish_sequence(ego, entities)
+
+        elif seq_id == 6:
+            # 7. Emergency Ambulance
+            amb = next((e for e in entities if e.id == "auto_ambulance_6"), None)
+            if not amb:
+                self._finish_sequence(ego, entities)
+                return
+
+            rel_v = amb.speed - ego.speed
+            amb.y -= rel_v * PIXELS_PER_METER * dt
+
+            if amb.y < ego.y - (12.0 * PIXELS_PER_METER):
+                amb.state = "PASSED"
+
+            if (amb.state == "PASSED" and self.phase_elapsed >= 5.0 and ego.speed > 5.0) or self.phase_elapsed >= 8.5:
+                self._finish_sequence(ego, entities)
+
+        elif seq_id == 7:
+            # 8. Stray Cattle
+            cattle = next((e for e in entities if e.id == "auto_cattle_7"), None)
+            if not cattle:
+                self._finish_sequence(ego, entities)
+                return
+
+            cattle.x -= cattle.speed * PIXELS_PER_METER * dt
+            if cattle.x < ego.base_lane_x - (3.5 * PIXELS_PER_METER):
+                cattle.state = "PASSED"
+
+            if (cattle.state == "PASSED" and self.phase_elapsed >= 5.5 and ego.speed > 6.0) or self.phase_elapsed >= 9.0:
                 self._finish_sequence(ego, entities)
 
     def _finish_sequence(self, ego: Vehicle = None, entities: List[Vehicle] = None):
@@ -1036,6 +1117,96 @@ class Scenario6_BusyJunction(BaseScenario):
             turning_moto.y += math.cos(turning_moto.heading) * turning_moto.speed * PIXELS_PER_METER * dt
 
 
+class Scenario7_EmergencyVehicle(BaseScenario):
+    """
+    Scenario 7: Emergency Responder Priority Corridor Yield
+    An emergency ambulance with flashing red/blue strobe beacons and siren
+    approaches rapidly from behind in the ego lane.
+    AVOC Safety Invariant:
+    1. Detects high closing rate from rear (TTC_rear < 3.5s with emergency beacon).
+    2. Proactively indicates left and yields lane by pulling safely toward left shoulder.
+    3. Slows to a crawl (~3.0 m/s) to widen the corridor for the emergency responder.
+    4. Once the ambulance rushes past and achieves safe longitudinal clearance, ego returns to base lane.
+    """
+    def __init__(self):
+        super().__init__(
+            id="SCENARIO_7_EMERGENCY_VEHICLE",
+            name="7. Emergency Corridor Yield",
+            description="Yielding to a high-speed emergency ambulance approaching from behind with siren and strobes.",
+            duration=15.0,
+        )
+
+    def setup(self, road_layout: Dict[str, float]) -> Tuple[Vehicle, List[Vehicle]]:
+        self.elapsed = 0.0
+        ego_lane_x = road_layout["lane_left_x"]
+
+        ego = Vehicle(
+            id="ego",
+            type=EntityType.EGO,
+            name="Autonomous Ego Vehicle",
+            x=ego_lane_x,
+            y=480.0,
+            speed=9.5,
+            target_speed=9.5,
+            max_speed=11.1,
+            width_m=1.9,
+            length_m=4.4,
+            color="#0ea5e9",
+        )
+        ego.target_x = ego_lane_x
+
+        # High-speed Ambulance approaching from behind in the same lane
+        ambulance = Vehicle(
+            id="ambulance",
+            type=EntityType.AMBULANCE,
+            name="Emergency Ambulance (108)",
+            x=ego_lane_x,
+            y=ego.y + (22.0 * PIXELS_PER_METER),
+            speed=18.0,
+            target_speed=18.0,
+            max_speed=20.0,
+            width_m=2.2,
+            length_m=5.4,
+            color="#FFFFFF",
+        )
+        ambulance.target_x = ego_lane_x
+
+        # Ambient sedan in opposite lane
+        oncoming = Vehicle(
+            id="oncoming_sedan",
+            type=EntityType.SURROUND_CAR,
+            name="Oncoming Traffic",
+            x=road_layout["lane_right_x"],
+            y=120.0,
+            speed=8.5,
+            target_speed=8.5,
+            heading=math.pi,
+            width_m=1.8,
+            length_m=4.2,
+            color="#64748b",
+        )
+
+        return ego, [ego, ambulance, oncoming]
+
+    def update(self, dt: float, ego: Vehicle, entities: List[Vehicle]):
+        super().update(dt, ego, entities)
+        ambulance = next((e for e in entities if e.id == "ambulance"), None)
+        oncoming = next((e for e in entities if e.id == "oncoming_sedan"), None)
+
+        if ambulance:
+            rel_v = ambulance.speed - ego.speed
+            ambulance.y -= rel_v * PIXELS_PER_METER * dt
+
+            if ambulance.y < ego.y - (12.0 * PIXELS_PER_METER):
+                ambulance.state = "PASSED"
+
+        if oncoming:
+            rel_oncoming = oncoming.speed + ego.speed
+            oncoming.y += rel_oncoming * PIXELS_PER_METER * dt
+            if oncoming.y > 750:
+                oncoming.y = -60
+
+
 class ScenarioManager:
     def __init__(self, road_layout: Dict[str, float]):
         self.road_layout = road_layout
@@ -1047,6 +1218,7 @@ class ScenarioManager:
             Scenario4_TrafficPolice(),
             Scenario5_ObstacleSwerve(),
             Scenario6_BusyJunction(),
+            Scenario7_EmergencyVehicle(),
         ]
         self.current_index = 0
 

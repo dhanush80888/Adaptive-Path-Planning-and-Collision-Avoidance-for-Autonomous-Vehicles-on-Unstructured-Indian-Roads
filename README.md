@@ -48,10 +48,17 @@ In **unstructured mixed-traffic environments**, road conditions are fundamentall
 ### Step 1: Launch the Server
 Clone or navigate to the project directory and run:
 
+**On Windows:**
+```powershell
+python main.py
+```
+*(or `py main.py` / `python server.py 8000`)*
+
+**On macOS / Linux:**
 ```bash
 python3 main.py
 ```
-*(Alternatively: `python3 server.py 8000`)*
+*(or `python3 server.py 8000`)*
 
 ### Step 2: Open the Web Visualizer
 Open your browser and navigate to:
@@ -65,32 +72,74 @@ The interactive dashboard loads immediately with continuous Auto Real-World driv
 
 ## 3. Interactive Web Visualizer Guide
 
-The visualizer provides a modern automotive glassmorphism dashboard split into two main sections:
+The visualizer provides a modern professional autonomous-vehicle mission control center split into an organized 4-zone dashboard:
 
 ```text
-┌────────────────────────────────────────────────────────┬───────────────────────────┐
-│              75% ROAD VIEWPORT (CANVAS)                │   25% SAFETY BRAIN HUD    │
-│  - 60 FPS Double-Buffered Canvas (Zero Screen Flicker) │  - Collision Risk Meter   │
-│  - Real-Time LHT Road Geometry & Curbs                 │  - Target Vehicle Telemetry│
-│  - Animated Radar Sweep & Predicted Trajectories       │  - Speedometer & Braking  │
-│  - Blindspot Spatial Envelope Overlay                  │  - Blindspot Gap Monitor  │
-│  - Historical Road Memory Hotspot Highlights           │  - Spatial Memory Prior   │
-│  - Dynamic Scenario Tabs & Hazard Injection Bar        │  - Live Voice Log Queue   │
-└────────────────────────────────────────────────────────┴───────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ TOP BAR: NEUROPATH-AV Header │ System Online │ Sim Status │ Clock │ 60 FPS             │
+├────────────────────┬──────────────────────────────────────────┬────────────────────────┤
+│ LEFT PANEL         │ CENTER VIEWPORT                          │ RIGHT PANEL            │
+│ (Vehicle Telemetry)│ (Main 60 FPS Simulation Canvas)          │ (Safety Decision HUD)  │
+│                    │                                          │                        │
+│ • Speedometer Gauge│ • Bright Violet Autonomous Vehicle       │ • Real-Time Risk Level │
+│ • Target Speed     │ • Medium-Gray Asphalt Road Surface       │ • Safety Decision      │
+│ • Global (X, Y) Pos│ • Current Planned Route (Teal Corridor)  │ • Primary Threat Card  │
+│ • Lane Offset (m)  │ • Replanned Route (Amber Bézier Swerve)  │ • Blindspot Monitor    │
+│ • Heading Angle (°)│ • Predicted Trajectory (Green/Orange/Red)│ • Spatial Road Memory  │
+│ • Autonomous State │ • Dynamic Vehicle Cushion & Blindspots   │ • Audio Voice Dispatch │
+│ • Throttle & Brake │ • Distinct Color-Coded Obstacles         │   Transcript Log       │
+├────────────────────┴──────────────────────────────────────────┴────────────────────────┤
+│ BOTTOM DOCK (Mission Controls & Simulation Settings)                                   │
+│ • Scenario Selection Tabs (Auto Mode + 6 Benchmarks)                                  │
+│ • Hazard Injection Quick-Bar (+ Bike, + Pedestrian, + Wrong-Way, + Pothole, etc.)     │
+│ • Playback Bar (Pause / Play, Replay, 0.5x, 1x, 2x Speed Multipliers)                │
+│ • Sensor Layer Toggles (LiDAR Sweep, Trajectory Arcs, Blindspots, Road Memory)        │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Dashboard Controls
 
 | Control | Description |
 |---|---|
-| **⚡ Auto Real-World (Tab 0)** | Continuous driving mode with dynamic hazard sequencing, live distance tracking, and safe avoidance counters. |
-| **Scenarios 1 to 6 (Tabs 1-6)** | Instant switching to dedicated standalone benchmark scenarios. |
-| **⚡ Inject Hazard Bar** | Trigger immediate real-world hazards on demand (`+ Bike Cut-In`, `+ Pedestrian`, `+ Wrong-Way`, `+ Pothole`, `+ Police`, `+ Junction`, `🎲 Random`). |
-| **Playback Bar** | `⏸ Pause` / `▶ Play`, `↺ Replay`, and simulation speed multipliers (`0.5x`, `1x`, `2x`). |
+| **⚡ Auto Real-World (Tab 0)** | Continuous autonomous driving mode with dynamic multi-hazard sequencing (8 realistic traffic challenges), live distance tracking, and safe avoidance counters. |
+| **Scenarios 1 to 7 (Tabs 1-7)** | Instant switching across 7 dedicated standalone benchmark driving scenarios. |
+| **🌦️ Atmospheric Weather Deck** | Real-time weather switches: `☀️ Day` (nominal daylight), `🌙 Night` (headlights, streetlamps, dark tint), `🌫️ Fog` (volumetric mist & sensor range attenuation), and `🌧️ Rain` (falling particles, wet asphalt sheen, tire spray). |
+| **⚡ Inject Hazard Bar** | Trigger immediate real-world hazards on demand (`+ Cut-In`, `+ Pedestrian`, `+ Wrong-Way`, `+ Pothole`, `+ Police`, `+ Junction`, `+ Ambulance`, `+ Stray Cattle`, `🎲 Random`). |
+| **Simulation Playback Bar** | Compact playback dock with `⏸ Pause` / `▶ Play`, `↺ Replay`, and simulation speed multipliers (`0.5x`, `1x`, `2x`). |
 | **Sensor Toggles** | Live toggles for `LiDAR Sweep Pulse`, `Predictive Trajectory Arcs`, `Blindspot Gap Envelope`, and `Road Spatial Memory`. |
 | **Voice Dispatch** | Real-time audio alerts and transcript log with priority escalation (`INFO`, `WARNING`, `CRITICAL`). |
 
 ---
+
+### Visualization & Color Architecture
+
+The simulation canvas and dashboard employ an intentional, high-contrast color palette designed for maximum clarity and instant situational awareness:
+
+| Visual Element | Color Code | Representation & Purpose |
+|---|---|---|
+| **Ego Autonomous Vehicle** | Bright Violet / Purple (`#A855F7` $\rightarrow$ `#6D28D9`) | Gradient violet chassis, `#F3E8FF` specular perimeter border, vibrant purple underglow, xenon headlights, and roof sensor deck with cyan LiDAR puck. High contrast against asphalt. |
+| **Current Vehicle Position** | Violet Radar Reticle (`#C084FC`) | Concentric radar pulses expanding from `(ego.x, ego.y)` with calibrated millimeter crosshairs and live telemetry tracking. |
+| **Current Planned Route** | Teal (`#2DD4BF` / `#14B8A6`) | Nominal lane corridor ribbon, dashed path centerline, and waypoint navigation nodes. |
+| **Replanned / Alternate Route** | Amber (`#F59E0B` / `#FBBF24`) | Glowing cubic Bézier evasion trajectory activated during dynamic obstacle clearance and lane swerves. |
+| **Predicted Trajectory** | Dynamic Risk Colors | Forward trajectory projection ribbon and milestone pips:<br>• **Green** (`#10B981`): Safe nominal path<br>• **Orange** (`#F97316`): Caution / warning trajectory<br>• **Red** (`#EF4444`): Dangerous collision trajectory |
+| **Safety / Collision Zones** | Dynamic Envelope | Forward vehicle safety cushion and adjacent blindspot envelope indicating clearance status (`CLEAR` in green vs `BLINDSPOT HAZARD` in red). |
+| **Asphalt Road Surface** | Medium Gray (`#3A3F4B`) | Non-glare asphalt roadbed with yellow centerline divider and curb markers. |
+| **Dashboard Panels** | Deep Charcoal (`#121316`) & Dark Navy (`#090F1D`) | Modern dark theme cards with rounded rectangular borders and clear typographic hierarchy. |
+
+#### Detected Obstacle Classification Colors
+
+Obstacles are dynamically rendered with distinct visual models and color identities based on object type:
+
+- **Emergency Ambulance (108)**: Clean White (`#FFFFFF`) with red cross, reflective chevrons, and roof lightbar with alternating Blue (`#3B82F6`) and Red (`#EF4444`) emergency strobes.
+- **Stray Cattle (Indian Zebu)**: Warm Tan/Brown (`#C29B38`) with white flank patches, curved horns, and animated tail.
+- **Motorcycle / Two-Wheeler**: Coral / Sunset Orange (`#FF5722`) with rider helmet & orange bounding box.
+- **Pedestrian (VRU)**: Electric Yellow / Cyber Gold (`#FACC15`) with animated walking legs and yellow bounding box.
+- **Wrong-Way Vehicle**: Crimson / Hazard Red (`#DC2626`) with forward oncoming headlight beams and strobe beacon.
+- **Road Defect / Pothole**: Construction Safety Orange (`#F97316`) with asphalt crater and safety cone.
+- **Traffic Police Officer**: Royal Blue Uniform (`#2563EB`) with Khaki sash & glowing `STOP`/`PROCEED` hand gesture.
+- **Auto-Rickshaw (3W)**: Canary Yellow body (`#FACC15`) with Emerald Green canopy (`#059669`).
+- **Parked Auto**: Steel Slate (`#475569`) with flashing amber hazard blinkers (`#F59E0B`).
+- **Civilian Sedan**: Cobalt / Royal Blue (`#0284C7`).
 
 ## 4. Driving Scenarios & Dynamic Hazard Suite
 
@@ -141,6 +190,13 @@ The visualizer provides a modern automotive glassmorphism dashboard split into t
 - **Real-World Reality**: An unstructured intersection with cross-traffic auto-rickshaws and turning bikes cutting across without priority signs.
 - **Traditional AV Failure**: Deadlocks or attempts aggressive insertion into occupied paths.
 - **AVOC Adaptive Decision**: Employs multi-agent conflict cones. Drops to a cautious crawl (`~3.5 m/s`), yields smoothly to cross-traffic, and accelerates cleanly through the junction once the corridor clears.
+
+---
+
+### Tab 7: Emergency Responder Priority Corridor Yield
+- **Real-World Reality**: A high-speed emergency ambulance with flashing red and blue strobe beacons and siren approaches rapidly from behind in our driving lane.
+- **Traditional AV Failure**: Maintains nominal cruise speed or performs late erratic braking, obstructing the life-saving transit corridor.
+- **AVOC Adaptive Decision**: Continuously monitors rear closing rate (`TTC_rear < 3.5s with emergency signature`). Pre-conditions left turn indicator, validates left shoulder clearance, smoothly repositions toward the left shoulder, and decelerates to a crawl (`~3.0 m/s`) to open a wide corridor for the ambulance to overtake safely. Resumes nominal cruising once longitudinal separation is restored.
 
 ---
 
@@ -205,6 +261,11 @@ Guarantees deterministic, auditable state transitions without jitter or mode-thr
 To verify collision-free guarantees across all benchmark scenarios and rules:
 
 ```bash
+# Windows
+python main.py --test
+# (or: py main.py --test)
+
+# macOS / Linux
 python3 main.py --test
 ```
 
@@ -237,10 +298,12 @@ python3 main.py --test
 Inspect frame-by-frame ASCII telemetry directly inside your terminal:
 
 ```bash
-# Run Motorcycle Cut-In scenario in terminal
-python3 main.py --cli --scenario 1
+# Windows:
+python main.py --cli --scenario 1
+python main.py --cli --scenario 5
 
-# Run Pothole Blindspot Swerve scenario in terminal
+# macOS / Linux:
+python3 main.py --cli --scenario 1
 python3 main.py --cli --scenario 5
 ```
 
@@ -259,8 +322,8 @@ avoc/
 │   ├── scenarios.py            # Scenario 0 (Auto Mode) & benchmark scenarios 1 through 6
 │   └── simulation.py           # Simulation orchestrator & telemetry serializer
 ├── web/                        # 60 FPS Web Simulation Dashboard
-│   ├── index.html              # 75% Road Canvas Viewport + 25% Safety Brain HUD
-│   ├── styles.css              # Automotive glassmorphism dark theme & radar animations
+│   ├── index.html              # 4-Zone Autonomous Control Center (Top Bar, Telemetry, Canvas, Brain HUD, Dock)
+│   ├── styles.css              # Modern dark theme styles, rounded cards, and radar animations
 │   └── app.js                  # Double-buffered canvas renderer, audio controller & HUD updater
 ├── server.py                   # Lightweight multi-threaded Python HTTP server & REST API
 ├── main.py                     # Unified CLI launcher, test suite runner, and server entrypoint

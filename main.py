@@ -14,9 +14,9 @@ from avoc.simulation import Simulation
 from avoc.constants import RiskLevel, EgoState
 
 def run_test_suite():
-    """Runs automated verification tests across all 6 scenarios"""
+    """Runs automated verification tests across all benchmark scenarios"""
     print("\n" + "=" * 65)
-    print("  RUNNING AVOC SAFETY VERIFICATION SUITE (ALL 6 SCENARIOS)")
+    print("  RUNNING AVOC SAFETY VERIFICATION SUITE (ALL BENCHMARK SCENARIOS)")
     print("=" * 65)
 
     sim = Simulation()
@@ -30,6 +30,7 @@ def run_test_suite():
         ("Scenario 4: Traffic Police Gesture", 4, lambda s, logs: "POLICE_OVERRIDE_STOP" in logs["decisions"] and logs["min_speed"] < 1.0),
         ("Scenario 5: Obstacle Blindspot Check", 5, lambda s, logs: "HOLD_LANE_ADJACENT_OCCUPIED" in logs["decisions"] and "SAFE_REPOSITION_AROUND_OBSTACLE" in logs["decisions"]),
         ("Scenario 6: Busy Mixed Junction", 6, lambda s, logs: "YIELD_JUNCTION_CROSS_TRAFFIC" in logs["decisions"] and logs["min_dist"] > 1.8),
+        ("Scenario 7: Emergency Corridor Yield", 7, lambda s, logs: "YIELD_EMERGENCY_CORRIDOR" in logs["decisions"] and logs["min_speed"] < 4.0),
     ]
 
     for name, idx, validator in tests:
@@ -69,7 +70,7 @@ def run_test_suite():
 
     print("=" * 65)
     if all_passed:
-        print("\033[92m  ALL 6 SCENARIOS SAFELY VERIFIED! ZERO COLLISIONS DETECTED.\033[0m")
+        print("\033[92m  ALL BENCHMARK SCENARIOS SAFELY VERIFIED! ZERO COLLISIONS DETECTED.\033[0m")
     else:
         print("\033[91m  SOME SCENARIOS FAILED VERIFICATION.\033[0m")
     print("=" * 65 + "\n")

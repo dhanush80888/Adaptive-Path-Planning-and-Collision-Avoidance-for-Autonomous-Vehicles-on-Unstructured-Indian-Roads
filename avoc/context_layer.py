@@ -238,6 +238,42 @@ class ContextLayer:
                         voice_alert = "Junction conflict projected. Crawling with caution."
                         voice_priority = "INFO"
 
+            # ----------------------------------------------------
+            # 7. EMERGENCY VEHICLE CORRIDOR YIELD (AMBULANCE / SIREN)
+            # ----------------------------------------------------
+            if entity.type == EntityType.AMBULANCE:
+                # Ambulance approaching from behind or overtaking
+                if -45 < long_dist <= 8.0 and abs(lat_dist) < 3.5:
+                    highest_risk = RiskLevel.ELEVATED if long_dist < -12 else RiskLevel.CRITICAL
+                    primary_threat = entity
+                    decision = "YIELD_EMERGENCY_CORRIDOR"
+                    safe_target_speed = min(3.0, ego.speed)
+                    target_x = ego.base_lane_x - (LANE_WIDTH_METERS * PIXELS_PER_METER * 0.45)
+                    voice_alert = "Emergency siren detected! Yielding lane corridor to ambulance."
+                    voice_priority = "CRITICAL"
+                    break
+                elif long_dist > 8.0 and entity.state != "PASSED":
+                    if highest_risk == RiskLevel.NOMINAL:
+                        highest_risk = RiskLevel.NOMINAL
+                        decision = "NORMAL_CRUISE"
+                        safe_target_speed = ego.max_speed
+                        target_x = ego.base_lane_x
+
+            # ----------------------------------------------------
+            # 8. STRAY ANIMAL / CATTLE IN ROADWAY
+            # ----------------------------------------------------
+            if entity.type == EntityType.STRAY_ANIMAL:
+                is_ahead = -1.0 < long_dist < 32.0
+                in_corridor = abs(entity.x - ego.base_lane_x) < 3.2 * PIXELS_PER_METER
+                if is_ahead and in_corridor:
+                    highest_risk = RiskLevel.CRITICAL if long_dist < 16.0 else RiskLevel.ELEVATED
+                    primary_threat = entity
+                    decision = "ANIMAL_OBSTACLE_CAUTIOUS_STOP"
+                    safe_target_speed = 0.0 if long_dist < 14.0 else 2.5
+                    voice_alert = "Stray cattle on road. Stopping gently and maintaining safe distance."
+                    voice_priority = "WARNING"
+                    break
+
         if highest_risk == RiskLevel.NOMINAL:
             decision = "NORMAL_CRUISE"
             safe_target_speed = 11.1

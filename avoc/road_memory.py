@@ -149,6 +149,20 @@ class RoadMemoryDatabase:
                     speed_cap_kmh=22.0,
                 )
             ]
+        elif scenario_id == "SCENARIO_7_EMERGENCY_VEHICLE":
+            return [
+                MemoryFeature(
+                    id="MEM_EMERGENCY_07",
+                    type=MemoryType.HABITUAL_CUT_IN,
+                    title="Designated Priority Transit Corridor",
+                    description="Fleet history: Frequent high-speed emergency response and hospital transit route",
+                    relative_y=420.0,
+                    span_meters=28.0,
+                    confidence=0.98,
+                    pre_action="SIREN_MONITOR_CORRIDOR_CLEARANCE",
+                    speed_cap_kmh=36.0,
+                )
+            ]
         elif scenario_id == "SCENARIO_0_AUTO":
             return [
                 MemoryFeature(

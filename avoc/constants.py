@@ -21,6 +21,8 @@ class EntityType(str, Enum):
     ROAD_OBSTACLE = "ROAD_OBSTACLE"
     SURROUND_CAR = "SURROUND_CAR"
     BUS = "BUS"
+    AMBULANCE = "AMBULANCE"
+    STRAY_ANIMAL = "STRAY_ANIMAL"
 
 class PoliceGesture(str, Enum):
     NONE = "NONE"
@@ -44,6 +46,7 @@ class EgoState(str, Enum):
     YIELDING = "YIELDING"
     POLICE_OVERRIDE_STOP = "POLICE_OVERRIDE_STOP"
     RECOVERING = "RECOVERING"
+    YIELDING_EMERGENCY = "YIELDING_EMERGENCY"
 
 RISK_METADATA = {
     RiskLevel.NOMINAL: {

@@ -177,6 +177,20 @@ class App {
     this.showBlindspot = true;
     this.showMemory = true;
 
+    // Atmospheric Weather System
+    this.weatherMode = 'CLEAR'; // 'CLEAR', 'NIGHT', 'FOG', 'RAIN'
+    this.rainParticles = [];
+    for (let i = 0; i < 120; i++) {
+      this.rainParticles.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: Math.random() * CANVAS_HEIGHT,
+        speed: 14 + Math.random() * 10,
+        length: 12 + Math.random() * 10,
+        drift: -1.8,
+      });
+    }
+    this.fogAnimOffset = 0;
+
     // Concurrency & Smooth Stepping Controls (eliminates frame jitter)
     this.isStepping = false;
     this.isSwitching = false;
@@ -217,6 +231,13 @@ class App {
       this.isPlaying = !this.isPlaying;
       document.getElementById('playIcon').textContent = this.isPlaying ? '⏸' : '▶';
       document.getElementById('playText').textContent = this.isPlaying ? 'Pause' : 'Play';
+      const simStatusEl = document.getElementById('simStatusBadge');
+      if (simStatusEl) {
+        simStatusEl.textContent = this.isPlaying ? 'RUNNING' : 'PAUSED';
+        simStatusEl.className = this.isPlaying
+          ? 'px-2 py-0.5 rounded text-[9.5px] bg-emerald-950/60 text-[#10B981] border border-[#10B981]/40 font-bold font-mono'
+          : 'px-2 py-0.5 rounded text-[9.5px] bg-amber-950/60 text-[#F59E0B] border border-[#F59E0B]/40 font-bold font-mono';
+      }
     });
 
     // Reset
@@ -227,13 +248,14 @@ class App {
     // Speed buttons
     document.querySelectorAll('.speed-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        const target = e.currentTarget || e.target;
         document.querySelectorAll('.speed-btn').forEach(b => {
-          b.classList.remove('bg-sky-600', 'text-white', 'font-bold');
-          b.classList.add('bg-slate-800', 'text-slate-300');
+          b.classList.remove('active', 'bg-[#7C3AED]', 'bg-sky-600', 'text-white', 'font-bold');
+          b.classList.add('bg-[#0A1222]', 'text-[#94A3B8]');
         });
-        e.target.classList.remove('bg-slate-800', 'text-slate-300');
-        e.target.classList.add('bg-sky-600', 'text-white', 'font-bold');
-        this.simSpeed = parseFloat(e.target.dataset.speed);
+        target.classList.remove('bg-[#0A1222]', 'bg-[#0C1426]', 'text-[#94A3B8]', 'bg-slate-800', 'text-slate-300');
+        target.classList.add('active', 'bg-[#7C3AED]', 'text-white', 'font-bold');
+        this.simSpeed = parseFloat(target.dataset.speed);
       });
     });
 
@@ -264,6 +286,16 @@ class App {
       btn.addEventListener('click', (e) => {
         const hazard = e.currentTarget.dataset.hazard;
         this.injectHazard(hazard);
+      });
+    });
+
+    // Weather Selection Deck
+    document.querySelectorAll('#weatherDeck .weather-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const mode = e.currentTarget.dataset.weather;
+        this.weatherMode = mode;
+        document.querySelectorAll('#weatherDeck .weather-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
       });
     });
   }
@@ -423,13 +455,14 @@ class App {
     if (!container || !this.state || !this.state.scenario) return;
 
     const scenarios = [
-      { id: 0, label: '⚡ Auto Real-World' },
-      { id: 1, label: '1. Bike Cut-In' },
-      { id: 2, label: '2. Pedestrian' },
-      { id: 3, label: '3. Wrong-Way' },
-      { id: 4, label: '4. Police Signal' },
-      { id: 5, label: '5. Obstacle Swerve' },
-      { id: 6, label: '6. Busy Junction' },
+      { id: 0, label: '⚡ Auto Mode' },
+      { id: 1, label: '🏍️ 1. Bike Cut-In' },
+      { id: 2, label: '🚶 2. Pedestrian' },
+      { id: 3, label: '⛔ 3. Wrong-Way' },
+      { id: 4, label: '👮 4. Police Stop' },
+      { id: 5, label: '⚠️ 5. Obstacle Swerve' },
+      { id: 6, label: '🚦 6. Busy Junction' },
+      { id: 7, label: '🚑 7. Emergency Yield' },
     ];
 
     if (!this.tabsInitialized) {
@@ -437,7 +470,7 @@ class App {
       scenarios.forEach(scen => {
         const btn = document.createElement('button');
         btn.id = `tab-scen-${scen.id}`;
-        btn.className = 'px-2.5 py-1 rounded text-xs transition-all font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300';
+        btn.className = 'scen-tab-btn';
         btn.textContent = scen.label;
         btn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -453,9 +486,9 @@ class App {
       const btn = document.getElementById(`tab-scen-${scen.id}`);
       if (btn) {
         if (currentIdx === scen.id) {
-          btn.className = 'px-2.5 py-1 rounded text-xs transition-all font-bold bg-sky-600 text-white shadow-lg shadow-sky-900/50';
+          btn.className = 'scen-tab-btn active';
         } else {
-          btn.className = 'px-2.5 py-1 rounded text-xs transition-all font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300';
+          btn.className = 'scen-tab-btn';
         }
       }
     });
@@ -512,38 +545,49 @@ class App {
     const entities = this.state.entities;
     const isJunction = this.state.scenario.id === 'SCENARIO_4_TRAFFIC_POLICE' || this.state.scenario.id === 'SCENARIO_6_BUSY_JUNCTION' || (this.state.autoStats && this.state.autoStats.showJunction);
 
-    // 1. Terrain (Direct opaque fill - no clearRect needed, eliminates transparent flicker)
-    ctx.fillStyle = '#0f172a';
+    // 1. Terrain: Deep Charcoal background (#121316) with subtle dark navy coordinate grid
+    ctx.fillStyle = '#121316';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Subtle dark navy coordinate grid on outer terrain
+    const roadL = road.road_left_edge - 30;
+    const roadR = road.road_right_edge + 30;
+    ctx.fillStyle = 'rgba(30, 45, 74, 0.45)';
+    for (let gx = 25; gx < CANVAS_WIDTH; gx += 45) {
+      if (gx >= roadL && gx <= roadR) continue;
+      for (let gy = 25; gy < CANVAS_HEIGHT; gy += 45) {
+        ctx.fillRect(gx - 1, gy - 1, 2, 2);
+      }
+    }
 
     // 2. Road Shoulder & Curbs
     const roadW = (road.road_right_edge - road.road_left_edge);
-    ctx.fillStyle = '#2d3748';
+    ctx.fillStyle = '#262A33';
     ctx.fillRect(road.road_left_edge - 30, 0, roadW + 60, CANVAS_HEIGHT);
 
-    // Black & Yellow road curb strips
+    // Curbs: Dark Slate and Amber markers
     const curbH = 30;
     const curbCount = Math.ceil(CANVAS_HEIGHT / curbH) + 1;
     for (let i = 0; i < curbCount; i++) {
       const y = (i * curbH) - (this.dashOffset % curbH);
-      ctx.fillStyle = i % 2 === 0 ? '#1e293b' : '#f59e0b';
+      ctx.fillStyle = i % 2 === 0 ? '#333742' : '#F59E0B';
       ctx.fillRect(road.road_left_edge - 8, y, 8, curbH);
       ctx.fillRect(road.road_right_edge, y, 8, curbH);
     }
 
-    // 3. Main Asphalt Road Surface
-    ctx.fillStyle = '#1e242d';
+    // 3. Main Asphalt Road Surface (Professional Medium Gray road)
+    ctx.fillStyle = '#3A3F4B';
     ctx.fillRect(road.road_left_edge, 0, roadW, CANVAS_HEIGHT);
 
-    // 4. Junction Cross Street (Scenarios 4 and 6, and Auto Junction)
+    // 4. Junction Cross Street (Scenarios 4 & 6, and Auto Junction)
     if (isJunction) {
       const jY = 280;
       const jH = 150;
-      ctx.fillStyle = '#1e242d';
+      ctx.fillStyle = '#3A3F4B';
       ctx.fillRect(0, jY - (jH / 2), CANVAS_WIDTH, jH);
 
       // Zebra Crossings
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = '#F3F4F6';
       const stripeW = 8;
       const gap = 6;
       const count = Math.floor(roadW / (stripeW + gap));
@@ -556,10 +600,10 @@ class App {
       }
     }
 
-    // Zebra Crossing for Scenario 2 and Auto Pedestrian Zone
+    // Zebra Crossing for Pedestrian Scenarios
     if (this.state.scenario.id === 'SCENARIO_2_PEDESTRIAN' || (this.state.autoStats && this.state.autoStats.showZebra)) {
       const crossY = 240;
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = '#F3F4F6';
       const stripeW = 10;
       const gap = 7;
       const count = Math.floor(roadW / (stripeW + gap));
@@ -567,16 +611,16 @@ class App {
         const x = road.road_left_edge + (i * (stripeW + gap)) + 4;
         ctx.fillRect(x, crossY - 14, stripeW, 28);
       }
-      // Curb crossing warning posts
-      ctx.fillStyle = '#eab308';
+      // Curb crossing beacons (Amber)
+      ctx.fillStyle = '#F59E0B';
       ctx.beginPath();
       ctx.arc(road.road_left_edge - 12, crossY, 6, 0, Math.PI * 2);
       ctx.arc(road.road_right_edge + 12, crossY, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 5. Solid Edge Lines
-    ctx.strokeStyle = '#cbd5e1';
+    // 5. Solid Edge Lines (Clean Crisp Light Gray / Off-White)
+    ctx.strokeStyle = '#9CA3AF';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(road.road_left_edge, 0);
@@ -586,7 +630,7 @@ class App {
     ctx.stroke();
 
     // 6. Yellow Center Divider (Left-Hand Traffic separator)
-    ctx.strokeStyle = '#eab308';
+    ctx.strokeStyle = '#F59E0B';
     ctx.lineWidth = 2.5;
     ctx.setLineDash([22, 14]);
     ctx.lineDashOffset = -this.dashOffset;
@@ -604,11 +648,14 @@ class App {
     ctx.setLineDash([]);
 
     // Lane Direction Labels
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.font = '11px monospace';
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.45)';
+    ctx.font = '11px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('▲ LHT DRIVE (OUR LANE)', road.lane_left_x, 690);
+    ctx.fillText('▲ LHT DRIVE (AUTONOMOUS LANE)', road.lane_left_x, 690);
     ctx.fillText('▼ ONCOMING LANE', road.lane_right_x, 690);
+
+    // Weather Underlay Effects (Street lamps, wet asphalt sheen)
+    this.renderWeatherUnderlay(ctx, road, ego);
 
     // 7. Sensor & Memory Layers
     if (this.showMemory && this.state.roadMemory) {
@@ -627,7 +674,7 @@ class App {
       this.renderLidarPulse(ctx, ego);
     }
 
-    // 8. Entities (Surroundings, Pedestrians, Police, Obstacles)
+    // 8. Detected Entities
     for (const entity of entities) {
       this.renderEntity(ctx, entity);
     }
@@ -635,9 +682,163 @@ class App {
     // 9. Ego Autonomous Vehicle
     this.renderEgoVehicle(ctx, ego);
 
-    // Blit completed offscreen frame to visible canvas atomically (eliminates screen flicker)
+    // Weather Overlay Effects (Night atmospheric darkness, fog mist, falling rain)
+    this.renderWeatherOverlay(ctx, road, ego);
+
+    // Blit completed offscreen frame to visible canvas atomically
     if (this.offscreenCanvas && this.ctx) {
       this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+  }
+
+  renderWeatherUnderlay(ctx, road, ego) {
+    if (this.weatherMode === 'NIGHT') {
+      ctx.save();
+      // Street Lamps along road edges
+      const lampInterval = 140;
+      const count = Math.ceil(CANVAS_HEIGHT / lampInterval) + 1;
+      for (let i = 0; i < count; i++) {
+        const ly = (i * lampInterval) - (this.dashOffset % lampInterval);
+        
+        // Left Curb Lamp
+        const leftGrad = ctx.createRadialGradient(road.road_left_edge - 14, ly, 4, road.road_left_edge - 14, ly, 90);
+        leftGrad.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
+        leftGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.15)');
+        leftGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = leftGrad;
+        ctx.beginPath();
+        ctx.arc(road.road_left_edge - 14, ly, 90, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Left Lamp Post fixture
+        ctx.fillStyle = '#F59E0B';
+        ctx.beginPath();
+        ctx.arc(road.road_left_edge - 14, ly, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Right Curb Lamp
+        const rightGrad = ctx.createRadialGradient(road.road_right_edge + 14, ly, 4, road.road_right_edge + 14, ly, 90);
+        rightGrad.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
+        rightGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.15)');
+        rightGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = rightGrad;
+        ctx.beginPath();
+        ctx.arc(road.road_right_edge + 14, ly, 90, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Right Lamp Post fixture
+        ctx.fillStyle = '#F59E0B';
+        ctx.beginPath();
+        ctx.arc(road.road_right_edge + 14, ly, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (this.weatherMode === 'RAIN') {
+      ctx.save();
+      // Wet Asphalt Specular Sheen on road
+      const roadW = road.road_right_edge - road.road_left_edge;
+      const rainSheenGrad = ctx.createLinearGradient(road.road_left_edge, 0, road.road_right_edge, 0);
+      rainSheenGrad.addColorStop(0, 'rgba(147, 197, 253, 0.08)');
+      rainSheenGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.12)');
+      rainSheenGrad.addColorStop(0.7, 'rgba(147, 197, 253, 0.08)');
+      rainSheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0.04)');
+      ctx.fillStyle = rainSheenGrad;
+      ctx.fillRect(road.road_left_edge, 0, roadW, CANVAS_HEIGHT);
+
+      // Tire Spray Mist behind ego vehicle
+      if (ego) {
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.22)';
+        ctx.beginPath();
+        ctx.ellipse(ego.x, ego.y + (ego.lengthPx / 2) + 18, ego.widthPx * 0.9, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  renderWeatherOverlay(ctx, road, ego) {
+    if (this.weatherMode === 'NIGHT') {
+      ctx.save();
+      // Atmospheric Night Darkness Tint
+      ctx.fillStyle = 'rgba(5, 8, 18, 0.62)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Night Mode HUD Badge on Canvas
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('🌙 ATMOSPHERIC NIGHT MODE [HEADLIGHT ILLUMINATION ON]', CANVAS_WIDTH - 25, 30);
+      ctx.restore();
+
+    } else if (this.weatherMode === 'RAIN') {
+      ctx.save();
+      // Falling Rain Drops Particle System
+      ctx.strokeStyle = 'rgba(186, 230, 253, 0.65)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      for (const p of this.rainParticles) {
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + (p.drift * (p.length / 5)), p.y + p.length);
+        p.y += p.speed;
+        p.x += p.drift;
+        if (p.y > CANVAS_HEIGHT) {
+          p.y = -15;
+          p.x = Math.random() * CANVAS_WIDTH;
+        }
+        if (p.x < 0) {
+          p.x = CANVAS_WIDTH;
+        }
+      }
+      ctx.stroke();
+
+      // Atmospheric Rain Tint
+      ctx.fillStyle = 'rgba(14, 30, 56, 0.15)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Rain Status Tag
+      ctx.fillStyle = '#38BDF8';
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('🌧️ MONSOON RAIN [WET ROADWAY FRICTION: 0.65]', CANVAS_WIDTH - 25, 30);
+      ctx.restore();
+
+    } else if (this.weatherMode === 'FOG') {
+      ctx.save();
+      this.fogAnimOffset = (this.fogAnimOffset || 0) + 0.4;
+
+      // Volumetric translucent fog bands drifting across road
+      for (let f = 0; f < 5; f++) {
+        const fy = (f * 150) + (Math.sin((this.fogAnimOffset + f * 40) * 0.02) * 20);
+        const fogGrad = ctx.createLinearGradient(0, fy, CANVAS_WIDTH, fy + 120);
+        fogGrad.addColorStop(0, 'rgba(203, 213, 225, 0.22)');
+        fogGrad.addColorStop(0.5, 'rgba(226, 232, 240, 0.35)');
+        fogGrad.addColorStop(1, 'rgba(203, 213, 225, 0.18)');
+        ctx.fillStyle = fogGrad;
+        ctx.fillRect(0, fy, CANVAS_WIDTH, 120);
+      }
+
+      // Attenuated Sensor Range Boundary Ring
+      if (ego) {
+        ctx.strokeStyle = 'rgba(249, 115, 22, 0.75)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.arc(ego.x, ego.y, 20 * PIXELS_PER_METER, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#F97316';
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚠️ FOG ATTENUATION HORIZON (SENSOR RANGE REDUCED: 20m)', ego.x, ego.y - (20 * PIXELS_PER_METER) - 8);
+      }
+
+      // Fog Status Tag
+      ctx.fillStyle = '#CBD5E1';
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('🌫️ DENSE FOG [SENSOR VISIBILITY RESTRICTED]', CANVAS_WIDTH - 25, 30);
+      ctx.restore();
     }
   }
 
@@ -651,32 +852,31 @@ class App {
       const isInside = roadMemory.hasActiveMemory && roadMemory.activeMemory && roadMemory.activeMemory.id === feat.id;
 
       ctx.save();
-      // Holographic spatial prior bounding zone
-      ctx.fillStyle = isInside ? 'rgba(99, 102, 241, 0.18)' : 'rgba(99, 102, 241, 0.08)';
+      // Holographic spatial prior bounding zone (Purple/Violet prior)
+      ctx.fillStyle = isInside ? 'rgba(124, 58, 237, 0.16)' : 'rgba(124, 58, 237, 0.06)';
       ctx.fillRect(road.road_left_edge, y - (spanPx / 2), roadW, spanPx);
 
-      ctx.strokeStyle = isInside ? 'rgba(129, 140, 248, 0.85)' : 'rgba(99, 102, 241, 0.4)';
+      ctx.strokeStyle = isInside ? 'rgba(45, 212, 191, 0.9)' : 'rgba(139, 92, 246, 0.45)';
       ctx.lineWidth = isInside ? 2 : 1.5;
       ctx.setLineDash([6, 6]);
       ctx.strokeRect(road.road_left_edge, y - (spanPx / 2), roadW, spanPx);
       ctx.setLineDash([]);
 
-      // Holographic Tag
-      ctx.fillStyle = isInside ? '#818cf8' : '#a5b4fc';
-      ctx.font = 'bold 10px monospace';
+      // Holographic Tag (Teal)
+      ctx.fillStyle = isInside ? '#2DD4BF' : '#94A3B8';
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
-      const label = `🧠 [ROAD MEMORY: ${feat.title.toUpperCase()} | ${feat.confidence}% CONF]`;
+      const label = `[PRIOR MEMORY: ${feat.title.toUpperCase()} | ${feat.confidence}% CONF]`;
       ctx.fillText(label, road.road_left_edge + 8, y - (spanPx / 2) - 6);
 
-      // Pre-action tag on shoulder
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = '9px monospace';
+      // Pre-action tag on shoulder (Amber warning action)
+      ctx.fillStyle = '#F59E0B';
+      ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillText(`PRE-ACTION: ${feat.preAction}`, road.road_left_edge + 8, y - (spanPx / 2) + 14);
 
-      // Expanding wave pulse when ego is inside memory zone
       if (isInside) {
         const pulse = (Date.now() * 0.003) % 1;
-        ctx.strokeStyle = `rgba(165, 180, 252, ${1 - pulse})`;
+        ctx.strokeStyle = `rgba(45, 212, 191, ${1 - pulse})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(road.road_left_edge, y - (spanPx / 2) + (pulse * spanPx));
@@ -692,26 +892,35 @@ class App {
     ctx.save();
     ctx.translate(ego.x, ego.y);
 
-    // Range rings
-    const rings = [10 * PIXELS_PER_METER, 20 * PIXELS_PER_METER, 30 * PIXELS_PER_METER];
-    rings.forEach((r, idx) => {
-      ctx.strokeStyle = idx === 1 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.12)';
+    // Range rings with technical distance annotations (Teal rings)
+    const rings = [
+      { r: 10 * PIXELS_PER_METER, label: '10m' },
+      { r: 20 * PIXELS_PER_METER, label: '20m' },
+      { r: 30 * PIXELS_PER_METER, label: '30m' }
+    ];
+    rings.forEach((ring, idx) => {
+      ctx.strokeStyle = idx === 1 ? 'rgba(20, 184, 166, 0.35)' : 'rgba(20, 184, 166, 0.18)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.arc(0, 0, ring.r, 0, Math.PI * 2);
       ctx.stroke();
+
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillText(ring.label, ring.r + 3, 3);
     });
 
-    // Spinning LiDAR Beam
+    // Spinning LiDAR Beam in Teal and Violet
     const beamLen = 32 * PIXELS_PER_METER;
-    const grad = ctx.createRadialGradient(0, 0, 5, 0, 0, beamLen);
-    grad.addColorStop(0, 'rgba(56, 189, 248, 0.5)');
-    grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, beamLen);
+    grad.addColorStop(0, 'rgba(20, 184, 166, 0.5)');
+    grad.addColorStop(0.7, 'rgba(124, 58, 237, 0.15)');
+    grad.addColorStop(1, 'rgba(20, 184, 166, 0)');
     ctx.fillStyle = grad;
 
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, beamLen, this.lidarSweepAngle - 0.25, this.lidarSweepAngle + 0.25);
+    ctx.arc(0, 0, beamLen, this.lidarSweepAngle - 0.22, this.lidarSweepAngle + 0.22);
     ctx.closePath();
     ctx.fill();
 
@@ -722,26 +931,27 @@ class App {
     if (!blindspot) return;
     ctx.save();
 
-    // Right adjacent lane envelope
+    // Right adjacent lane collision safety zone
     const isRightClear = blindspot.is_right_clear;
     const envX = ego.x + (1.8 * PIXELS_PER_METER);
     const envW = 3.6 * PIXELS_PER_METER;
     const envY = ego.y - (16 * PIXELS_PER_METER);
     const envH = 28 * PIXELS_PER_METER;
 
-    ctx.fillStyle = isRightClear ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.2)';
-    ctx.strokeStyle = isRightClear ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.6)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
+    // Safety/Collision Zone: Green when clear, Red when occupied/dangerous
+    ctx.fillStyle = isRightClear ? 'rgba(16, 185, 129, 0.14)' : 'rgba(239, 68, 68, 0.25)';
+    ctx.strokeStyle = isRightClear ? '#10B981' : '#EF4444';
+    ctx.lineWidth = isRightClear ? 1.5 : 2.5;
+    ctx.setLineDash(isRightClear ? [6, 4] : []);
 
     ctx.fillRect(envX, envY, envW, envH);
     ctx.strokeRect(envX, envY, envW, envH);
 
     ctx.setLineDash([]);
-    ctx.font = '10px monospace';
-    ctx.fillStyle = isRightClear ? '#4ade80' : '#f87171';
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+    ctx.fillStyle = isRightClear ? '#10B981' : '#EF4444';
     ctx.fillText(
-      isRightClear ? '✓ ADJACENT LANE CLEAR' : '✗ BLINDSPOT OCCUPIED',
+      isRightClear ? '✓ ADJACENT CORRIDOR CLEAR (GREEN)' : '✗ BLINDSPOT HAZARD (RED)',
       envX + envW / 2,
       envY - 6
     );
@@ -751,31 +961,228 @@ class App {
 
   renderTrajectories(ctx, ego, entities) {
     const riskLevel = this.state.evaluation.riskLevel;
-    let egoColor = '#10b981'; // Green
-    if (riskLevel === 'AWARENESS') egoColor = '#f59e0b';
-    if (riskLevel === 'ELEVATED') egoColor = '#f97316';
-    if (riskLevel === 'CRITICAL') egoColor = '#ef4444';
+    const egoState = this.state.egoState;
+    const decision = this.state.evaluation.decision || '';
+    const nominalLaneX = this.state.road ? this.state.road.lane_left_x : 590;
+    const isReplanning = (
+      egoState === 'SAFE_REPOSITIONING' ||
+      egoState === 'CHECKING_BLINDSPOT' ||
+      egoState === 'RETURNING_TO_LANE' ||
+      decision.includes('NUDGE') || decision.includes('EVADE') || decision.includes('REPLAN') ||
+      (ego.targetX && Math.abs(ego.targetX - nominalLaneX) > 6)
+    );
 
-    // Ego Forward Projected Ribbon
+    // ========================================================
+    // 1. SAFETY / COLLISION DYNAMIC ZONE (Ego Safety Cushion)
+    // ========================================================
+    ctx.save();
+    const forwardCushion = Math.max(55, (ego.speed || 10) * 1.8 * PIXELS_PER_METER);
+    const cushionW = ego.widthPx + 24;
+    const cushionH = ego.lengthPx + forwardCushion;
+    const cushionX = ego.x - (cushionW / 2);
+    const cushionY = ego.y - (ego.lengthPx / 2) - forwardCushion + 8;
+
+    let zoneFill = 'rgba(16, 185, 129, 0.08)';
+    let zoneBorder = '#10B981';
+    let zoneText = 'SAFETY ZONE [CLEAR: GREEN]';
+
+    if (riskLevel === 'CRITICAL' || riskLevel === 'ELEVATED') {
+      zoneFill = 'rgba(239, 68, 68, 0.22)';
+      zoneBorder = '#EF4444';
+      zoneText = 'COLLISION ZONE [DANGER: RED]';
+    } else if (riskLevel === 'AWARENESS') {
+      zoneFill = 'rgba(249, 115, 22, 0.15)';
+      zoneBorder = '#F97316';
+      zoneText = 'SAFETY BUFFER [CAUTION: ORANGE]';
+    }
+
+    ctx.fillStyle = zoneFill;
+    ctx.strokeStyle = zoneBorder;
+    ctx.lineWidth = (riskLevel === 'CRITICAL') ? 2.5 : 1.5;
+    ctx.setLineDash((riskLevel === 'CRITICAL') ? [] : [6, 4]);
+    ctx.beginPath();
+    ctx.roundRect(cushionX, cushionY, cushionW, cushionH, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = zoneBorder;
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(zoneText, ego.x, cushionY - 6);
+    ctx.restore();
+
+    // ========================================================
+    // 2. CURRENT PLANNED PATH (Teal - Nominal Lane Corridor)
+    // ========================================================
+    ctx.save();
+    const planHalfW = (ego.widthPx / 2) + 4;
+    // Planned corridor ribbon (Teal)
+    ctx.fillStyle = 'rgba(20, 184, 166, 0.12)';
+    ctx.beginPath();
+    ctx.rect(nominalLaneX - planHalfW, 60, planHalfW * 2, ego.y - 60);
+    ctx.fill();
+
+    // Planned path centerline (Teal)
+    ctx.strokeStyle = '#2DD4BF';
+    ctx.lineWidth = 2.8;
+    ctx.setLineDash([10, 6]);
+    ctx.beginPath();
+    ctx.moveTo(nominalLaneX, ego.y);
+    ctx.lineTo(nominalLaneX, 70);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Planned route waypoint markers (Teal dots)
+    ctx.fillStyle = '#2DD4BF';
+    for (let py = ego.y - 45; py >= 90; py -= 55) {
+      ctx.beginPath();
+      ctx.arc(nominalLaneX, py, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Planned route destination pip (Teal)
+    ctx.beginPath();
+    ctx.arc(nominalLaneX, 70, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PLANNED ROUTE (TEAL)', nominalLaneX, 56);
+    ctx.restore();
+
+    // ========================================================
+    // 3. REPLANNED / ALTERNATE PATH (Amber - Evasive Maneuver)
+    // ========================================================
+    if (isReplanning) {
+      ctx.save();
+      const targetX = ego.targetX || (nominalLaneX + 60);
+      const startX = ego.x;
+      const startY = ego.y;
+      const endY = Math.max(90, ego.y - 250);
+
+      const cp1X = startX;
+      const cp1Y = startY - 70;
+      const cp2X = targetX;
+      const cp2Y = startY - 150;
+
+      // Corridor ribbon (Amber)
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.30)';
+      ctx.lineWidth = ego.widthPx + 8;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, targetX, endY);
+      ctx.stroke();
+
+      // Main Replanned centerline (Glowing Amber)
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 3.8;
+      ctx.shadowColor = 'rgba(245, 158, 11, 0.7)';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, targetX, endY);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Evasion waypoints along curve (Amber nodes)
+      ctx.fillStyle = '#FEF08A';
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 2;
+      [0.25, 0.5, 0.75, 1.0].forEach(t => {
+        const bx = Math.pow(1-t, 3)*startX + 3*Math.pow(1-t, 2)*t*cp1X + 3*(1-t)*t*t*cp2X + Math.pow(t, 3)*targetX;
+        const by = Math.pow(1-t, 3)*startY + 3*Math.pow(1-t, 2)*t*cp1Y + 3*(1-t)*t*t*cp2Y + Math.pow(t, 3)*endY;
+        ctx.beginPath();
+        ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // Evasion target marker
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#F59E0B';
+      ctx.textAlign = 'center';
+      ctx.fillText('REPLANNED ROUTE (AMBER)', targetX, endY - 10);
+      ctx.restore();
+    }
+
+    // ========================================================
+    // 4. PREDICTED TRAJECTORY (Safe: Green / Warning: Orange / Dangerous: Red)
+    // ========================================================
     if (ego.trajectory && ego.trajectory.length > 0) {
-      ctx.strokeStyle = egoColor;
-      ctx.lineWidth = 3.5;
-      ctx.setLineDash([6, 4]);
+      ctx.save();
+      let trajColor = '#10B981'; // Safe: Green
+      let trajFill = 'rgba(16, 185, 129, 0.16)';
+
+      if (riskLevel === 'CRITICAL' || riskLevel === 'ELEVATED') {
+        trajColor = '#EF4444'; // Dangerous: Red
+        trajFill = 'rgba(239, 68, 68, 0.24)';
+      } else if (riskLevel === 'AWARENESS') {
+        trajColor = '#F97316'; // Warning: Orange
+        trajFill = 'rgba(249, 115, 22, 0.18)';
+      }
+
+      // Predicted corridor ribbon
+      const corridorHalfW = (ego.widthPx / 2) + 2;
+      ctx.fillStyle = trajFill;
+      ctx.beginPath();
+      for (let i = 0; i < ego.trajectory.length; i++) {
+        const p = ego.trajectory[i];
+        if (i === 0) ctx.moveTo(p.x - corridorHalfW, p.y);
+        else ctx.lineTo(p.x - corridorHalfW, p.y);
+      }
+      for (let i = ego.trajectory.length - 1; i >= 0; i--) {
+        const p = ego.trajectory[i];
+        ctx.lineTo(p.x + corridorHalfW, p.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // Predicted trajectory spine
+      ctx.strokeStyle = trajColor;
+      ctx.lineWidth = 3.6;
       ctx.beginPath();
       ctx.moveTo(ego.x, ego.y);
       for (const p of ego.trajectory) {
         ctx.lineTo(p.x, p.y);
       }
       ctx.stroke();
-      ctx.setLineDash([]);
+
+      // Prediction milestone pips with time annotations
+      ego.trajectory.forEach((pt, idx) => {
+        ctx.fillStyle = trajColor;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (idx === ego.trajectory.length - 1 || idx === Math.floor(ego.trajectory.length / 2)) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`+${pt.t}s`, pt.x + 8, pt.y + 3);
+        }
+      });
+
+      ctx.restore();
     }
 
-    // Entities Trajectories
+    // ========================================================
+    // 5. ENTITIES' PREDICTED TRAJECTORIES (Safe/Warning/Dangerous)
+    // ========================================================
     for (const entity of entities) {
       if (entity.trajectory && entity.trajectory.length > 0) {
-        ctx.strokeStyle = 'rgba(249, 115, 22, 0.6)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
+        ctx.save();
+        const isThreat = this.state.evaluation.primaryThreat && this.state.evaluation.primaryThreat.id === entity.id;
+        let entColor = '#10B981'; // Safe (Green)
+        if (isThreat) {
+          if (riskLevel === 'CRITICAL' || riskLevel === 'ELEVATED') {
+            entColor = '#EF4444'; // Dangerous (Red)
+          } else {
+            entColor = '#F97316'; // Warning (Orange)
+          }
+        }
+
+        ctx.strokeStyle = entColor;
+        ctx.lineWidth = isThreat ? 3 : 2;
+        ctx.setLineDash([5, 4]);
         ctx.beginPath();
         ctx.moveTo(entity.x, entity.y);
         for (const p of entity.trajectory) {
@@ -783,11 +1190,45 @@ class App {
         }
         ctx.stroke();
         ctx.setLineDash([]);
+
+        const lastP = entity.trajectory[entity.trajectory.length - 1];
+        if (lastP) {
+          ctx.fillStyle = entColor;
+          ctx.beginPath();
+          ctx.arc(lastP.x, lastP.y, isThreat ? 4.5 : 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
     }
   }
 
   renderEgoVehicle(ctx, ego) {
+    // ========================================================
+    // 1. CURRENT VEHICLE POSITION (Bright Violet Beacon & Reticle)
+    // ========================================================
+    ctx.save();
+    const posPulse = (Date.now() * 0.003) % 1;
+    ctx.strokeStyle = `rgba(192, 132, 252, ${1 - posPulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ego.x, ego.y, 18 + (posPulse * 16), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Center crosshair ticks
+    ctx.strokeStyle = '#C084FC';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ego.x - 7, ego.y);
+    ctx.lineTo(ego.x + 7, ego.y);
+    ctx.moveTo(ego.x, ego.y - 7);
+    ctx.lineTo(ego.x, ego.y + 7);
+    ctx.stroke();
+    ctx.restore();
+
+    // ========================================================
+    // 2. MAIN VEHICLE BODY (Bright Violet / Purple)
+    // ========================================================
     ctx.save();
     ctx.translate(ego.x, ego.y);
     ctx.rotate(ego.heading);
@@ -795,41 +1236,85 @@ class App {
     const w = ego.widthPx;
     const h = ego.lengthPx;
 
-    // Vehicle Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.fillRect(-w / 2 + 3, -h / 2 + 3, w, h);
+    // Forward Headlight Illumination Cone (Teal beam)
+    const beamGradient = ctx.createLinearGradient(0, -h / 2, 0, -h / 2 - 130);
+    beamGradient.addColorStop(0, 'rgba(45, 212, 191, 0.28)');
+    beamGradient.addColorStop(1, 'rgba(45, 212, 191, 0.0)');
+    ctx.fillStyle = beamGradient;
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + 2, -h / 2);
+    ctx.lineTo(-w - 20, -h / 2 - 130);
+    ctx.lineTo(w + 20, -h / 2 - 130);
+    ctx.lineTo(w / 2 - 2, -h / 2);
+    ctx.closePath();
+    ctx.fill();
 
-    // Main Body
-    ctx.fillStyle = '#0284c7';
+    // Luminous Chassis Glow & Shadow
+    ctx.shadowColor = 'rgba(168, 85, 247, 0.75)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    ctx.roundRect(-w / 2 + 4, -h / 2 + 4, w, h, 6);
+    ctx.fill();
+
+    // Main Chassis - Bright Violet / Purple Gradient
+    const chassisGrad = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+    chassisGrad.addColorStop(0, '#A855F7');   // Neon violet
+    chassisGrad.addColorStop(0.4, '#8B5CF6'); // Electric purple
+    chassisGrad.addColorStop(1, '#6D28D9');   // Deep violet
+    ctx.fillStyle = chassisGrad;
     ctx.beginPath();
     ctx.roundRect(-w / 2, -h / 2, w, h, 6);
     ctx.fill();
 
-    // Windshield & Rear glass
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(-w / 2 + 3, -h / 2 + 10, w - 6, 12); // Front
-    ctx.fillRect(-w / 2 + 3, h / 2 - 16, w - 6, 8);   // Rear
+    // Specular High-Contrast Lavender/White Outline
+    ctx.strokeStyle = '#F3E8FF';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+    ctx.shadowBlur = 0; // reset shadow
 
-    // Roof Sensor Dome (LiDAR puck)
-    ctx.fillStyle = '#0369a1';
+    // Gloss Windshield & Rear Window (Deep Obsidian)
+    ctx.fillStyle = '#090F1D';
+    ctx.fillRect(-w / 2 + 3, -h / 2 + 10, w - 6, 12); // Front windshield
+    ctx.fillRect(-w / 2 + 3, h / 2 - 16, w - 6, 8);   // Rear window
+
+    // Windshield reflection streak
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + 6, -h / 2 + 20);
+    ctx.lineTo(-w / 2 + 16, -h / 2 + 11);
+    ctx.stroke();
+
+    // Aerodynamic Roof Sensor Deck (Bright violet deck with Cyan LiDAR puck)
+    ctx.fillStyle = '#1E1B4B';
     ctx.fillRect(-w / 2 + 4, -h / 2 + 24, w - 8, 18);
-    ctx.fillStyle = '#38bdf8';
+    // LiDAR sensor dome
+    ctx.fillStyle = '#2DD4BF';
     ctx.beginPath();
     ctx.arc(0, 0, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#C084FC';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
 
-    // Headlights (Beam forward)
-    ctx.fillStyle = 'rgba(254, 240, 138, 0.8)';
-    ctx.fillRect(-w / 2 + 2, -h / 2 - 1, 6, 2);
-    ctx.fillRect(w / 2 - 8, -h / 2 - 1, 6, 2);
+    // Front Xenon White Headlights
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-w / 2 + 2, -h / 2 - 1, 6, 2.5);
+    ctx.fillRect(w / 2 - 8, -h / 2 - 1, 6, 2.5);
+
+    // Rear Ruby Red Taillights
+    ctx.fillStyle = '#EF4444';
+    ctx.fillRect(-w / 2 + 2, h / 2 - 1.5, 6, 2);
+    ctx.fillRect(w / 2 - 8, h / 2 - 1.5, 6, 2);
 
     ctx.restore();
 
-    // Ego Identifier Badge
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 10px monospace';
+    // Vehicle Identifier Badge (Bright Violet with Coordinate)
+    ctx.fillStyle = '#C084FC';
+    ctx.font = 'bold 10px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('EGO AV', ego.x, ego.y + (ego.lengthPx / 2) + 12);
+    ctx.fillText('NEUROPATH EGO-AV [VIOLET]', ego.x, ego.y + (ego.lengthPx / 2) + 14);
   }
 
   renderEntity(ctx, entity) {
@@ -840,22 +1325,32 @@ class App {
     const w = entity.widthPx;
     const h = entity.lengthPx;
 
+    // Distinct Colors Based on Object Type
+    let typeColor = '#0EA5E9';
+    let typeName = entity.name || 'OBSTACLE';
+
     if (entity.type === 'MOTORCYCLE') {
+      typeColor = '#FF5722'; // Coral / Sunset Orange
+      typeName = '[2W: MOTORCYCLE]';
       // Bike Body
-      ctx.fillStyle = '#ea580c';
+      ctx.fillStyle = '#FF5722';
       ctx.fillRect(-3, -h / 2, 6, h);
-      // Front Fork & Handlebars
-      ctx.fillStyle = '#cbd5e1';
+      // Fork & Handlebars
+      ctx.fillStyle = '#FED7AA';
       ctx.fillRect(-w / 2, -h / 2 + 4, w, 3);
       // Rider Helmet
-      ctx.fillStyle = '#fed7aa';
+      ctx.fillStyle = '#FF8A65';
       ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
       ctx.fill();
+      // Glowing Headlight
+      ctx.fillStyle = '#FFF7ED';
+      ctx.fillRect(-2, -h / 2 - 2, 4, 3);
     } else if (entity.type === 'AUTO_RICKSHAW') {
-      // Auto-Rickshaw (tapered front, 3 wheels)
+      typeColor = '#10B981'; // Emerald Green & Canary Yellow
+      typeName = '[3W: AUTO-RICKSHAW]';
       // Yellow body base
-      ctx.fillStyle = '#eab308';
+      ctx.fillStyle = '#FACC15';
       ctx.beginPath();
       ctx.moveTo(0, -h / 2);
       ctx.lineTo(w / 2, -h / 2 + 10);
@@ -865,24 +1360,26 @@ class App {
       ctx.closePath();
       ctx.fill();
 
-      // Green Canopy Roof
-      ctx.fillStyle = '#15803d';
+      // Emerald Green Canopy Roof
+      ctx.fillStyle = '#059669';
       ctx.fillRect(-w / 2 + 2, -h / 2 + 10, w - 4, h - 14);
 
       // Single Front Wheel
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#0F172A';
       ctx.fillRect(-2, -h / 2 - 2, 4, 6);
     } else if (entity.type === 'PEDESTRIAN') {
-      // High-detail pedestrian walking across road
-      const swing = Math.sin(entity.walkCycle) * 8;
-      // Soft ground shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      typeColor = '#FACC15'; // Electric Yellow / High-vis Lime
+      typeName = '[VRU: PEDESTRIAN]';
+      const swing = Math.sin(entity.walkCycle || 0) * 8;
+
+      // Ground shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
       ctx.beginPath();
       ctx.ellipse(0, 7, 9, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Swinging Legs (trousers)
-      ctx.strokeStyle = '#1e3a8a';
+      // Walking legs (navy jeans)
+      ctx.strokeStyle = '#1E3A8A';
       ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.moveTo(-3, 1);
@@ -892,29 +1389,24 @@ class App {
       ctx.stroke();
 
       // Shoes
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#0F172A';
       ctx.fillRect(-5 + swing, 10, 4, 3);
       ctx.fillRect(1 - swing, 10, 4, 3);
 
-      // Torso (vibrant shirt)
-      ctx.fillStyle = '#9333ea';
+      // Torso (Electric Yellow High-Vis Shirt)
+      ctx.fillStyle = '#FACC15';
       ctx.beginPath();
       ctx.roundRect(-6, -7, 12, 12, 3);
       ctx.fill();
 
-      // Head & Skin
-      ctx.fillStyle = '#fed7aa';
+      // Head
+      ctx.fillStyle = '#FED7AA';
       ctx.beginPath();
       ctx.arc(0, -11, 4.5, 0, Math.PI * 2);
       ctx.fill();
-      // Hair
-      ctx.fillStyle = '#451a03';
-      ctx.beginPath();
-      ctx.arc(0, -13, 4, Math.PI, Math.PI * 2);
-      ctx.fill();
 
-      // Arms swinging opposite to legs
-      ctx.strokeStyle = '#fed7aa';
+      // Arms swinging
+      ctx.strokeStyle = '#FED7AA';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(-6, -4);
@@ -923,8 +1415,9 @@ class App {
       ctx.lineTo(6 + swing * 0.7, 3);
       ctx.stroke();
     } else if (entity.type === 'WRONG_WAY_VEHICLE') {
-      // Dedicated Wrong-Way Vehicle (with heading = PI, local -Y rotates facing downwards towards Ego)
-      // Dual forward oncoming Headlight beams projecting down towards Ego!
+      typeColor = '#DC2626'; // Crimson / Hazard Red
+      typeName = '[HAZARD: WRONG-WAY]';
+      // Dual forward oncoming Headlight beams projecting down towards Ego
       ctx.fillStyle = 'rgba(254, 240, 138, 0.45)';
       ctx.beginPath();
       ctx.moveTo(-w / 2 + 4, -h / 2);
@@ -940,107 +1433,213 @@ class App {
       ctx.closePath();
       ctx.fill();
 
-      // Oncoming Vehicle Body (Bright hazard red)
-      ctx.fillStyle = '#dc2626';
+      // Crimson Vehicle Chassis
+      ctx.fillStyle = '#DC2626';
       ctx.beginPath();
       ctx.roundRect(-w / 2, -h / 2, w, h, 4);
       ctx.fill();
 
-      // Front Windshield facing travel direction (downwards towards Ego)
-      ctx.fillStyle = '#0f172a';
+      // Windshield facing travel direction
+      ctx.fillStyle = '#0F172A';
       ctx.fillRect(-w / 2 + 3, -h / 2 + 6, w - 6, 9);
-
-      // Rear window
       ctx.fillRect(-w / 2 + 3, h / 2 - 12, w - 6, 6);
-
-      // Front Headlight bulbs
-      ctx.fillStyle = '#fef08a';
-      ctx.beginPath();
-      ctx.arc(-w / 2 + 5, -h / 2 + 2, 3.5, 0, Math.PI * 2);
-      ctx.arc(w / 2 - 5, -h / 2 + 2, 3.5, 0, Math.PI * 2);
-      ctx.fill();
 
       // Flashing top hazard warning strobe
       const flash = Math.sin(Date.now() * 0.015) > 0;
-      ctx.fillStyle = flash ? '#facc15' : '#ef4444';
+      ctx.fillStyle = flash ? '#FACC15' : '#EF4444';
       ctx.beginPath();
       ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
       ctx.fill();
+    } else if (entity.type === 'TRAFFIC_POLICE') {
+      typeColor = '#3B82F6'; // Police Blue & Gold
+      typeName = '[POLICE: TRAFFIC OFFICER]';
+      // Police Uniform
+      ctx.fillStyle = '#2563EB';
+      ctx.fillRect(-6, -6, 12, 12);
+      // Khaki Cap
+      ctx.fillStyle = '#CA8A04';
+      ctx.beginPath();
+      ctx.arc(0, -8, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Raised STOP or PROCEED Gesture
+      if (entity.gesture === 'STOP') {
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(-8, 6, 16, 4);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('STOP', 0, 16);
+      } else {
+        ctx.fillStyle = '#22C55E';
+        ctx.fillRect(-8, 6, 16, 4);
+      }
+    } else if (entity.type === 'ROAD_OBSTACLE') {
+      typeColor = '#F97316'; // Construction Amber / Safety Orange
+      typeName = '[STATIC: ROAD DEFECT]';
+      // Pothole dark crater
+      ctx.fillStyle = '#27272A';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Orange construction cone
+      ctx.fillStyle = '#F97316';
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(-4, -1, 8, 2);
     } else if (entity.id === 'parked_auto') {
-      // Parked roadside delivery van with hazard flashers
+      typeColor = '#94A3B8'; // Steel Slate with flashing amber
+      typeName = '[PARKED: HAZARDS ON]';
       ctx.fillStyle = '#475569';
       ctx.beginPath();
       ctx.roundRect(-w / 2, -h / 2, w, h, 4);
       ctx.fill();
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#0F172A';
       ctx.fillRect(-w / 2 + 3, -h / 2 + 6, w - 6, 8);
 
       const blink = Math.sin(Date.now() * 0.008) > 0;
       if (blink) {
-        ctx.fillStyle = '#f59e0b';
+        ctx.fillStyle = '#F59E0B';
         ctx.fillRect(-w / 2, -h / 2, 4, 3);
         ctx.fillRect(w / 2 - 4, -h / 2, 4, 3);
         ctx.fillRect(-w / 2, h / 2 - 3, 4, 3);
         ctx.fillRect(w / 2 - 4, h / 2 - 3, 4, 3);
       }
-    } else if (entity.type === 'TRAFFIC_POLICE') {
-      // Police Officer in Khaki
-      ctx.fillStyle = '#ca8a04';
-      ctx.fillRect(-6, -6, 12, 12);
-      ctx.fillStyle = '#fef08a';
+    } else if (entity.type === 'AMBULANCE' || entity.id.includes('ambulance')) {
+      typeColor = '#EF4444'; // Red & Blue Emergency Strobe
+      typeName = '[EMERGENCY: AMBULANCE (108)]';
+      
+      // Ambulance White Box Body
+      ctx.fillStyle = '#FFFFFF';
       ctx.beginPath();
-      ctx.arc(0, -8, 4, 0, Math.PI * 2); // Cap/Head
+      ctx.roundRect(-w / 2, -h / 2, w, h, 5);
       ctx.fill();
 
-      // Raised STOP Palm or PROCEED Wave
-      if (entity.gesture === 'STOP') {
-        ctx.fillStyle = '#ef4444';
-        ctx.fillRect(-8, 6, 16, 4); // Red STOP gesture
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 8px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('STOP', 0, 16);
-      } else {
-        ctx.fillStyle = '#22c55e';
-        ctx.fillRect(-8, 6, 16, 4); // Green wave
-      }
-    } else if (entity.type === 'ROAD_OBSTACLE') {
-      // Pothole / Debris + Construction cones
-      ctx.fillStyle = '#3f3f46';
+      // Red Medical Cross in center
+      ctx.fillStyle = '#EF4444';
+      ctx.fillRect(-3, -4, 6, 8);
+      ctx.fillRect(-5, -2, 10, 4);
+
+      // Hi-Vis Green/Yellow reflective chevron stripes along sides
+      ctx.fillStyle = '#10B981';
+      ctx.fillRect(-w / 2 + 1, -h / 2 + 12, 3, h - 20);
+      ctx.fillRect(w / 2 - 4, -h / 2 + 12, 3, h - 20);
+
+      // Windshield
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(-w / 2 + 3, -h / 2 + 6, w - 6, 8);
+
+      // Emergency Lightbar on roof (Alternating Red and Blue Flashes)
+      const flashStrobe = Math.floor(Date.now() / 90) % 2 === 0;
+      const blueLight = flashStrobe ? '#3B82F6' : '#1D4ED8';
+      const redLight = flashStrobe ? '#EF4444' : '#B91C1C';
+      
+      // Lightbar base
+      ctx.fillStyle = '#1E293B';
+      ctx.fillRect(-w / 2 + 4, -h / 2 + 16, w - 8, 5);
+
+      // Left blue strobe
+      ctx.fillStyle = blueLight;
       ctx.beginPath();
-      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.arc(-w / 4, -h / 2 + 18, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Traffic Cone
-      ctx.fillStyle = '#f97316';
-      ctx.fillRect(-4, -4, 8, 8);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(-4, -1, 8, 2);
+      // Right red strobe
+      ctx.fillStyle = redLight;
+      ctx.beginPath();
+      ctx.arc(w / 4, -h / 2 + 18, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Emergency flashing aura
+      ctx.fillStyle = flashStrobe ? 'rgba(59, 130, 246, 0.22)' : 'rgba(239, 68, 68, 0.22)';
+      ctx.beginPath();
+      ctx.arc(0, -h / 2 + 18, 32, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (entity.type === 'STRAY_ANIMAL' || entity.id.includes('cattle')) {
+      typeColor = '#F59E0B'; // Amber
+      typeName = '[ANIMAL: STRAY CATTLE]';
+
+      // Cattle Body (Tan/Brown with White patches)
+      ctx.fillStyle = '#C29B38';
+      ctx.beginPath();
+      ctx.roundRect(-w / 2, -h / 2 + 4, w, h - 8, 6);
+      ctx.fill();
+
+      // White flank patch
+      ctx.fillStyle = '#FDF6E2';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Cattle Head & Snout
+      ctx.fillStyle = '#A77D2C';
+      ctx.beginPath();
+      ctx.arc(0, -h / 2 + 3, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Curved Horns
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(-4, -h / 2 + 1, 4, Math.PI * 0.8, Math.PI * 1.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(4, -h / 2 + 1, 4, Math.PI * 1.4, Math.PI * 2.2);
+      ctx.stroke();
+
+      // Tail
+      ctx.strokeStyle = '#785A1D';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2 - 4);
+      ctx.lineTo(Math.sin(Date.now() * 0.005) * 4, h / 2 + 4);
+      ctx.stroke();
+
     } else {
-      // Standard Vehicle / Sedan
-      ctx.fillStyle = entity.color || '#64748b';
+      typeColor = '#0EA5E9'; // Royal Blue / Cobalt Sedan
+      typeName = '[CAR: SEDAN]';
+      ctx.fillStyle = '#0284C7';
       ctx.beginPath();
       ctx.roundRect(-w / 2, -h / 2, w, h, 4);
       ctx.fill();
-
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#0F172A';
       ctx.fillRect(-w / 2 + 2, -h / 2 + 8, w - 4, 8);
     }
 
     ctx.restore();
 
-    // Entity Bounding Box & Classification Badge
+    // Entity Bounding Box & Perception Classification Badge
     const isThreat = this.state.evaluation.primaryThreat && this.state.evaluation.primaryThreat.id === entity.id;
-    const boxColor = isThreat ? '#ef4444' : 'rgba(148, 163, 184, 0.4)';
+    const boxColor = isThreat ? '#EF4444' : typeColor;
     ctx.strokeStyle = boxColor;
-    ctx.lineWidth = isThreat ? 2 : 1;
+    ctx.lineWidth = isThreat ? 2.5 : 1.3;
     ctx.strokeRect(entity.x - (w / 2) - 4, entity.y - (h / 2) - 4, w + 8, h + 8);
 
-    // Badge Label
-    ctx.fillStyle = isThreat ? '#ef4444' : '#94a3b8';
-    ctx.font = '10px monospace';
+    // Corner brackets for threats (High-tech autonomous perception look)
+    if (isThreat) {
+      const bX = entity.x - (w / 2) - 4;
+      const bY = entity.y - (h / 2) - 4;
+      const bW = w + 8;
+      const bH = h + 8;
+      const cLen = 7;
+      ctx.strokeStyle = '#EF4444';
+      ctx.lineWidth = 2.8;
+      // Top-Left
+      ctx.beginPath(); ctx.moveTo(bX, bY + cLen); ctx.lineTo(bX, bY); ctx.lineTo(bX + cLen, bY); ctx.stroke();
+      // Top-Right
+      ctx.beginPath(); ctx.moveTo(bX + bW - cLen, bY); ctx.lineTo(bX + bW, bY); ctx.lineTo(bX + bW, bY + cLen); ctx.stroke();
+      // Bottom-Left
+      ctx.beginPath(); ctx.moveTo(bX, bY + bH - cLen); ctx.lineTo(bX, bY + bH); ctx.lineTo(bX + cLen, bY + bH); ctx.stroke();
+      // Bottom-Right
+      ctx.beginPath(); ctx.moveTo(bX + bW - cLen, bY + bH); ctx.lineTo(bX + bW, bY + bH); ctx.lineTo(bX + bW, bY + bH - cLen); ctx.stroke();
+    }
+
+    // Badge Label with distinct type classification
+    ctx.fillStyle = isThreat ? '#EF4444' : typeColor;
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(entity.name, entity.x, entity.y - (h / 2) - 8);
+    ctx.fillText(`${typeName} ${entity.name}`, entity.x, entity.y - (h / 2) - 8);
   }
 
   // ==========================================
@@ -1089,7 +1688,7 @@ class App {
       document.getElementById('timelineFill').style.width = `${phasePct.toFixed(1)}%`;
     } else {
       if (autoCard) autoCard.style.display = 'none';
-      if (autoInjectBar) autoInjectBar.style.display = 'none';
+      if (autoInjectBar) autoInjectBar.style.display = 'flex';
       document.getElementById('scenarioTime').textContent = `${scen.elapsed}s / ${scen.duration}s`;
       document.getElementById('elapsedLabel').textContent = `${scen.elapsed}s`;
       document.getElementById('durationLabel').textContent = `${scen.duration}s`;
@@ -1099,7 +1698,51 @@ class App {
     // Ego State Badge
     if (this.cachedHud.egoState !== egoState) {
       this.cachedHud.egoState = egoState;
-      document.getElementById('egoStateBadge').textContent = egoState;
+      const egoBadge = document.getElementById('egoStateBadge');
+      if (egoBadge) {
+        egoBadge.textContent = egoState;
+        if (egoState === 'EMERGENCY_STOP' || egoState === 'POLICE_OVERRIDE_STOP') {
+          egoBadge.className = 'px-2.5 py-0.5 rounded-md text-[10px] bg-red-950/60 text-[#EF4444] border border-[#EF4444]/40 font-bold';
+        } else if (egoState === 'SAFE_REPOSITIONING' || egoState === 'CHECKING_BLINDSPOT' || egoState === 'RETURNING_TO_LANE') {
+          egoBadge.className = 'px-2.5 py-0.5 rounded-md text-[10px] bg-teal-950/60 text-[#2DD4BF] border border-[#14B8A6]/40 font-bold';
+        } else if (egoState === 'DECELERATING' || egoState === 'YIELDING') {
+          egoBadge.className = 'px-2.5 py-0.5 rounded-md text-[10px] bg-amber-950/60 text-[#F59E0B] border border-[#F59E0B]/40 font-bold';
+        } else {
+          egoBadge.className = 'px-2.5 py-0.5 rounded-md text-[10px] bg-emerald-950/60 text-[#10B981] border border-[#10B981]/40 font-bold';
+        }
+      }
+    }
+
+    // Synchronize 4-Stage Safety & Risk Matrix
+    const pillSafe = document.getElementById('matrixPillSafe');
+    const pillWarning = document.getElementById('matrixPillWarning');
+    const pillDanger = document.getElementById('matrixPillDanger');
+    const pillReplan = document.getElementById('matrixPillReplan');
+
+    const isReplanning = (
+      egoState === 'SAFE_REPOSITIONING' ||
+      egoState === 'CHECKING_BLINDSPOT' ||
+      egoState === 'RETURNING_TO_LANE' ||
+      (evalResult.decision && (evalResult.decision.includes('NUDGE') || evalResult.decision.includes('EVADE') || evalResult.decision.includes('REPLAN')))
+    );
+
+    if (pillSafe && pillWarning && pillDanger && pillReplan) {
+      pillSafe.className = 'risk-indicator-item';
+      pillWarning.className = 'risk-indicator-item';
+      pillDanger.className = 'risk-indicator-item';
+      pillReplan.className = 'risk-indicator-item';
+
+      if (evalResult.riskLevel === 'CRITICAL' || evalResult.riskLevel === 'ELEVATED') {
+        pillDanger.className = 'risk-indicator-item active-danger';
+      } else if (evalResult.riskLevel === 'AWARENESS') {
+        pillWarning.className = 'risk-indicator-item active-warning';
+      } else {
+        pillSafe.className = 'risk-indicator-item active-safe';
+      }
+
+      if (isReplanning) {
+        pillReplan.className = 'risk-indicator-item active-replan';
+      }
     }
 
     // Risk Card
@@ -1115,21 +1758,21 @@ class App {
       riskText.textContent = evalResult.riskLevel;
 
       if (evalResult.riskLevel === 'CRITICAL') {
-        riskText.className = 'text-2xl font-black tracking-tight text-red-500 animate-pulse';
-        riskCard.className = 'p-3.5 rounded-xl border bg-red-950/20 border-red-500/60 transition-colors duration-150';
+        riskText.className = 'text-2xl font-black tracking-tight text-[#EF4444] animate-pulse';
+        riskCard.className = 'p-3.5 rounded-[12px] border bg-[#090F1D] border-[#EF4444] shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-colors duration-150';
         riskSub.textContent = 'Imminent collision hazard';
       } else if (evalResult.riskLevel === 'ELEVATED') {
-        riskText.className = 'text-2xl font-black tracking-tight text-orange-500';
-        riskCard.className = 'p-3.5 rounded-xl border bg-orange-950/20 border-orange-500/50 transition-colors duration-150';
+        riskText.className = 'text-2xl font-black tracking-tight text-[#EF4444]';
+        riskCard.className = 'p-3.5 rounded-[12px] border bg-[#090F1D] border-[#EF4444]/70 shadow-[0_0_10px_rgba(239,68,68,0.18)] transition-colors duration-150';
         riskSub.textContent = 'Active trajectory conflict';
       } else if (evalResult.riskLevel === 'AWARENESS') {
-        riskText.className = 'text-2xl font-black tracking-tight text-amber-400';
-        riskCard.className = 'p-3.5 rounded-xl border bg-amber-950/20 border-amber-500/40 transition-colors duration-150';
+        riskText.className = 'text-2xl font-black tracking-tight text-[#F59E0B]';
+        riskCard.className = 'p-3.5 rounded-[12px] border bg-[#090F1D] border-[#F59E0B]/60 shadow-[0_0_10px_rgba(245,158,11,0.15)] transition-colors duration-150';
         riskSub.textContent = 'Monitoring lateral approach';
       } else {
-        riskText.className = 'text-2xl font-black tracking-tight text-emerald-400';
-        riskCard.className = 'p-3.5 rounded-xl border bg-emerald-950/20 border-emerald-500/30 transition-colors duration-150';
-        riskSub.textContent = 'Path clear';
+        riskText.className = 'text-2xl font-black tracking-tight text-[#10B981]';
+        riskCard.className = 'p-3.5 rounded-[12px] border bg-[#090F1D] border-[#10B981]/40 transition-colors duration-150';
+        riskSub.textContent = 'Path clear • Safe corridor';
       }
     }
 
@@ -1141,12 +1784,12 @@ class App {
       const badge = document.getElementById('entityBadge');
       if (threat) {
         badge.textContent = threat.type;
-        badge.className = 'px-1.5 py-0.5 rounded bg-red-900/60 text-red-300 text-[10px] font-bold border border-red-700/60';
+        badge.className = 'px-2 py-0.5 rounded bg-red-950/60 text-[#EF4444] text-[10px] font-bold border border-[#EF4444]/50';
         document.getElementById('targetName').textContent = threat.name;
         document.getElementById('targetBehavior').textContent = evalResult.decision.replace(/_/g, ' ');
       } else {
         badge.textContent = 'SCANNING';
-        badge.className = 'px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]';
+        badge.className = 'px-2 py-0.5 rounded bg-[#0C1426] text-[#94A3B8] text-[10px] border border-[#1E2D4A]';
         document.getElementById('targetName').textContent = 'None in threat zone';
         document.getElementById('targetBehavior').textContent = 'Normal flow';
         document.getElementById('targetDrift').textContent = '0.0 m/s';
@@ -1182,6 +1825,31 @@ class App {
     document.getElementById('brakeValue').textContent = `${brakePct}%`;
     document.getElementById('brakeBar').style.width = `${brakePct}%`;
 
+    // Vehicle Position & Heading Telemetry (Left Panel)
+    if (ego) {
+      const posXEl = document.getElementById('egoPosX');
+      if (posXEl) posXEl.textContent = `${(ego.x / PIXELS_PER_METER).toFixed(1)}m`;
+      const posYEl = document.getElementById('egoPosY');
+      if (posYEl) posYEl.textContent = `${(ego.y / PIXELS_PER_METER).toFixed(1)}m`;
+      const offsetEl = document.getElementById('egoLaneOffset');
+      if (offsetEl) {
+        const offsetMeters = ((ego.x - 590) / PIXELS_PER_METER).toFixed(2);
+        offsetEl.textContent = `${offsetMeters >= 0 ? '+' : ''}${offsetMeters}m`;
+      }
+      const headingEl = document.getElementById('egoHeading');
+      if (headingEl) {
+        const deg = ((ego.heading || 0) * 180 / Math.PI).toFixed(1);
+        headingEl.textContent = `${deg}°`;
+      }
+    }
+    const simStatusEl = document.getElementById('simStatusBadge');
+    if (simStatusEl) {
+      simStatusEl.textContent = this.isPlaying ? 'RUNNING' : 'PAUSED';
+      simStatusEl.className = this.isPlaying
+        ? 'px-2 py-0.5 rounded text-[9.5px] bg-emerald-950/60 text-[#10B981] border border-[#10B981]/40 font-bold font-mono'
+        : 'px-2 py-0.5 rounded text-[9.5px] bg-amber-950/60 text-[#F59E0B] border border-[#F59E0B]/40 font-bold font-mono';
+    }
+
     // Blindspot Status
     const bs = evalResult.blindspotStatus || {};
     if (this.cachedHud.isRightClear !== bs.is_right_clear) {
@@ -1190,14 +1858,14 @@ class App {
       const gapBadge = document.getElementById('gapBadge');
       if (bs.is_right_clear) {
         bsRight.textContent = 'CLEAR (>15m safe gap)';
-        bsRight.className = 'font-semibold text-emerald-400';
+        bsRight.className = 'font-semibold text-[#10B981]';
         gapBadge.textContent = 'GAP: CLEAR';
-        gapBadge.className = 'px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 text-[10px] border border-emerald-800/60';
+        gapBadge.className = 'px-2 py-0.5 rounded bg-emerald-950/60 text-[#10B981] text-[10px] border border-[#10B981]/40 font-bold';
       } else {
         bsRight.textContent = 'OCCUPIED (Auto in blindspot)';
-        bsRight.className = 'font-semibold text-red-400';
+        bsRight.className = 'font-semibold text-[#EF4444]';
         gapBadge.textContent = 'GAP: BLOCKED';
-        gapBadge.className = 'px-1.5 py-0.5 rounded bg-red-950 text-red-400 text-[10px] border border-red-800/60';
+        gapBadge.className = 'px-2 py-0.5 rounded bg-red-950/60 text-[#EF4444] text-[10px] border border-[#EF4444]/40 font-bold';
       }
     }
 
@@ -1215,7 +1883,7 @@ class App {
       if (activeMem) {
         if (memBadge) {
           memBadge.textContent = 'ACTIVE INFLUENCE';
-          memBadge.className = 'px-1.5 py-0.2 rounded bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-500 animate-pulse';
+          memBadge.className = 'px-2 py-0.5 rounded bg-teal-950/60 text-[#2DD4BF] text-[9px] font-bold border border-[#14B8A6]/50 pulse-active';
         }
         if (memTitle) memTitle.textContent = activeMem.title;
         if (memConf) memConf.textContent = `${activeMem.confidence}% (MATCHED)`;
@@ -1224,7 +1892,7 @@ class App {
         const upcoming = memData.allFeatures[0];
         if (memBadge) {
           memBadge.textContent = 'AHEAD (PRIOR MAP)';
-          memBadge.className = 'px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 text-[10px] border border-indigo-800';
+          memBadge.className = 'px-2 py-0.5 rounded bg-[#0C1426] text-[#A855F7] text-[9px] border border-[#1E2D4A]';
         }
         if (memTitle) memTitle.textContent = upcoming.title;
         if (memConf) memConf.textContent = `${upcoming.confidence}% (FLEET PRIOR)`;
@@ -1232,7 +1900,7 @@ class App {
       } else {
         if (memBadge) {
           memBadge.textContent = 'STANDBY';
-          memBadge.className = 'px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 text-[10px]';
+          memBadge.className = 'px-2 py-0.5 rounded bg-[#0C1426] text-[#94A3B8] text-[9px] border border-[#1E2D4A]';
         }
         if (memTitle) memTitle.textContent = 'Standard Road Segment';
         if (memConf) memConf.textContent = '--';
@@ -1247,14 +1915,14 @@ class App {
 
       const voiceLogContainer = document.getElementById('voiceLog');
       const item = document.createElement('div');
-      item.className = 'p-1.5 rounded bg-slate-900 border border-slate-800 flex flex-col gap-0.5';
+      item.className = 'p-2 rounded-lg bg-[#0C1426] border border-[#1E2D4A] flex flex-col gap-0.5';
       const timeStr = `${scen.elapsed}s`;
       item.innerHTML = `
-        <div class="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+        <div class="flex items-center justify-between text-[9px] text-[#94A3B8] font-mono">
           <span>TIME: ${timeStr}</span>
-          <span class="text-${evalResult.voicePriority === 'CRITICAL' ? 'red' : 'sky'}-400 font-bold">${evalResult.voicePriority}</span>
+          <span class="text-${evalResult.voicePriority === 'CRITICAL' ? '[#EF4444]' : '[#2DD4BF]'} font-bold">${evalResult.voicePriority}</span>
         </div>
-        <div class="text-slate-200 text-[11px] leading-tight font-medium">"${evalResult.voiceAlert}"</div>
+        <div class="text-[#F8FAFC] text-[11px] leading-tight font-medium">"${evalResult.voiceAlert}"</div>
       `;
       voiceLogContainer.prepend(item);
     }
